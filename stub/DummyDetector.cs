@@ -1,6 +1,8 @@
 ///  DummyDetector.cs
 ///
 
+namespace net.sss_consortium.fastdet {
+
 public class DummyDetector : IObjectDetector {
 
     // Detection mode.
@@ -35,3 +37,5 @@ public class DummyDetector : IObjectDetector {
         return new YLResult[] { result1 };
     }
 }
+
+} // namespace net.sss_consortium.fastdet

@@ -2,6 +2,8 @@
 
 Fast object detector with distributed neural network.
 
+Namespace: net.sss_consortium.fastdet
+
 ```
 //  YLObject
 //

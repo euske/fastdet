@@ -1,6 +1,8 @@
 ///  IObjectDetector.cs
 ///
 
+namespace net.sss_consortium.fastdet {
+
 //  YLObject
 //
 public struct YLObject {
@@ -51,3 +53,5 @@ interface IObjectDetector {
     // Gets the results (if any).
     YLResult[] GetResults();
 }
+
+} // namespace net.sss_consortium.fastdet
