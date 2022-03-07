@@ -6,7 +6,7 @@ namespace net.sss_consortium.fastdet {
 public class DummyDetector : IObjectDetector {
 
     // Detection mode.
-    public string Mode { get; set; }
+    public YLDetMode Mode { get; set; }
     // Detection threshold.
     public float Threshold { get; set; }
 

@@ -20,12 +20,21 @@ public struct YLResult {
     public YLObject[] Objects;         // List of detected objects.
 }
 
+//  YLDetMode
+//
+public enum YLDetMode {
+    None,        // Just return dummy data.
+    ClientOnly,  // YOLO-tiny at client, no networking.
+    ServerOnly,  // YOLO-full at server, full image transfer.
+    //Mixed,     // YOLO-full at client/server, with autoencoder.
+}
+
 //  IObjectDetector
 //
 //  void Start() {
 //    detector = new RemoteYOLODetector();
 //    detector.Open("rtsp://192.168.1.1:1234/detect");
-//    //detector.Mode = "test1";
+//    //detector.Mode = ServerOnly;
 //  }
 //
 //  void Update() {
@@ -39,7 +48,7 @@ public struct YLResult {
 interface IObjectDetector {
 
     // Detection mode.
-    string Mode { get; set; }
+    YLDetMode Mode { get; set; }
     // Detection threshold.
     float Threshold { get; set; }
 
