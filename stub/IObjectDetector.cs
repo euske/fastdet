@@ -15,8 +15,8 @@ public struct YLObject {
 //
 public struct YLResult {
     public uint RequestId;             // Request ID.
-    public uint Timestamp0;            // Timestamp (local).
-    public uint Timestamp1;            // Timestamp (remote).
+    public DateTime SentTime;          // Timestamp (sent).
+    public DateTime RecvTime;          // Timestamp (received).
     public YLObject[] Objects;         // List of detected objects.
 }
 
