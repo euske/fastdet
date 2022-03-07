@@ -1,5 +1,6 @@
 ///  IObjectDetector.cs
 ///
+using System;
 
 namespace net.sss_consortium.fastdet {
 

@@ -1,5 +1,6 @@
 ///  DummyDetector.cs
 ///
+using System;
 
 namespace net.sss_consortium.fastdet {
 
@@ -31,8 +32,8 @@ public class DummyDetector : IObjectDetector {
         obj1.BBox = new Rect(10, 10, 100, 100);
         YLResult result1 = new YLResult();
         result1.RequestId = 1;
-        result1.Timestamp0 = 0;
-        result1.Timestamp1 = 0;
+        result1.SentTime = DateTime.Now;
+        result1.RecvTime = DateTime.Now;
         result1.Objects = new YLObject[] { obj1 };
         return new YLResult[] { result1 };
     }
