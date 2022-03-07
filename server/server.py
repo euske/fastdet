@@ -91,20 +91,23 @@ class RTPHandler:
 
     BUFSIZ = 65536
 
-    def __init__(self, sock_rtp, rtp_host, rtp_port, session_id):
+    def __init__(self, sock_rtp, rtp_host, rtp_port, session_id, timeout=3):
         self.logger = logging.getLogger(session_id.hex())
         self.sock_rtp = sock_rtp
         self.rtp_host = rtp_host
         self.rtp_port = rtp_port
         self.session_id = session_id
-        data = b'\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-        self.sock_rtp.sendto(data, (self.rtp_host, self.rtp_port))
-        self.logger.info(f'init: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>')
-        self.timeout = 3
+        self.timeout = timeout
         return
 
     def __repr__(self):
         return f'<RTPHandler: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>'
+
+    def open(self):
+        self.logger.info(f'open: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>')
+        data = b'\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        self.sock_rtp.sendto(data, (self.rtp_host, self.rtp_port))
+        return
 
     def close(self):
         assert self.sock_rtp is not None
@@ -177,6 +180,7 @@ class RTSPHandler(socketserver.StreamRequestHandler):
         self.wfile.write(text.encode('ascii')+b'\r\n')
         handler = RTPHandler(sock_rtp, rtp_host, rtp_port, session_id)
         self.server.register(sock_rtp.fileno(), handler)
+        handler.open()
         return
 
 class RTSPServer(socketserver.TCPServer):
@@ -211,7 +215,8 @@ class RTSPServer(socketserver.TCPServer):
         assert fd in self.handlers
         self.logger.info(f'unregister: fd={fd}')
         self.epoll.unregister(fd)
-        self.handlers[fd].close()
+        (_, handler) = self.handlers[fd]
+        handler.close()
         del self.handlers[fd]
         return
 
@@ -254,7 +259,7 @@ def main(argv):
         # Server mode.
         logging.info(f'listening: at {server_port}...')
         RTSPServer.allow_reuse_address = True
-        timout = 0.05
+        timeout = 0.05
         with RTSPServer(('', server_port)) as server:
             server.serve_forever(timeout)
 
