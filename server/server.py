@@ -66,22 +66,57 @@ class RTSPClient:
         self.sock_rtp.sendto(data, (self.host, self.rtp_port))
         self.epoll = select.epoll()
         self.epoll.register(self.sock_rtp.fileno(), select.POLLIN)
+        self._recv_buf = b''
+        self._recv_seqno = 0
+        self._send_seqno = 1
         return
 
-    def send(self, data):
-        self.sock_rtp.sendto(data, (self.host, self.rtp_port))
+    def send(self, data, chunk_size=32768):
+        i0 = 0
+        while i0 < len(data):
+            i1 = i0 + chunk_size
+            pt = 96
+            if len(data) <= i1:
+                pt |= 0x80
+            header = struct.pack('>BBH', 0x80, pt, self._send_seqno & 0xffff)
+            self._send_seqno += 1
+            segment = data[i0:i1]
+            self.sock_rtp.sendto(header+segment, (self.host, self.rtp_port))
+            i0 = i1
         return
 
-    def recv(self, timeout=0):
+    def idle(self, timeout=0):
         # Poll RTP ports.
         for (fd,event) in self.epoll.poll(timeout):
             if fd == self.sock_rtp.fileno():
-                (data, addr) = self.sock_rtp.recvfrom(self.BUFSIZ)
-                self.process_rtp(data)
+                while True:
+                    try:
+                        (data, addr) = self.sock_rtp.recvfrom(self.BUFSIZ)
+                        self.process_rtp(data)
+                    except BlockingIOError:
+                        break
         return
 
     def process_rtp(self, data):
-        print(f'rtp: {data!r}')
+        (flags,pt,seqno) = struct.unpack('>BBH', data[:4])
+        self.logger.debug(
+            f'process_rtp: flags={flags}, pt={pt}, seqno={seqno}')
+        if self._recv_seqno != seqno:
+            # Packet drop detected. Cancelling the current payload.
+            self.logger.info(f'process_rtp: DROP {seqno}/{self._recv_seqno}')
+            self._recv_buf = None
+        if (pt & 0x7f) == 96 and self._recv_buf is not None:
+            self._recv_buf += data[4:]
+        if pt & 0x80:
+            # Significant packet - ending the payload.
+            if self._recv_buf is not None:
+                self.process_data(self._recv_buf)
+            self._recv_buf = b''
+        self._recv_seqno = seqno+1
+        return
+
+    def process_data(self, data):
+        self.logger.info(f'client: process_data: {len(data)}')
         return
 
 
@@ -91,13 +126,17 @@ class RTPHandler:
 
     BUFSIZ = 65536
 
-    def __init__(self, sock_rtp, rtp_host, rtp_port, session_id, timeout=3):
+    def __init__(self, server, sock_rtp, rtp_host, rtp_port, session_id, timeout=3):
         self.logger = logging.getLogger(session_id.hex())
+        self.server = server
         self.sock_rtp = sock_rtp
         self.rtp_host = rtp_host
         self.rtp_port = rtp_port
         self.session_id = session_id
         self.timeout = timeout
+        self._recv_buf = b''
+        self._recv_seqno = 0
+        self._send_seqno = 0
         return
 
     def __repr__(self):
@@ -107,6 +146,7 @@ class RTPHandler:
         self.logger.info(f'open: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>')
         data = b'\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
         self.sock_rtp.sendto(data, (self.rtp_host, self.rtp_port))
+        self._send_seqno += 1
         return
 
     def close(self):
@@ -116,12 +156,52 @@ class RTPHandler:
         self.sock_rtp = None
         return
 
-    def recv(self):
+    def send(self, data, chunk_size=32768):
+        i0 = 0
+        while i0 < len(data):
+            i1 = i0 + chunk_size
+            pt = 96
+            if len(data) <= i1:
+                pt |= 0x80
+            header = struct.pack('>BBH', 0x80, pt, self._send_seqno & 0xffff)
+            self._send_seqno += 1
+            segment = data[i0:i1]
+            self.sock_rtp.sendto(header+segment, (self.rtp_host, self.rtp_port))
+            i0 = i1
+        return
+
+    def idle(self):
         assert self.sock_rtp is not None
-        data = self.sock_rtp.recv(self.BUFSIZ)
-        self.logger.debug(f'recv: {data!r}')
-        self.sock_rtp.sendto(data, (self.rtp_host, self.rtp_port))
-        return True
+        while True:
+            try:
+                (data, addr) = self.sock_rtp.recvfrom(self.BUFSIZ)
+                self.process_rtp(data)
+            except BlockingIOError:
+                break
+        return
+
+    def process_rtp(self, data):
+        (flags,pt,seqno) = struct.unpack('>BBH', data[:4])
+        self.logger.debug(
+            f'process_rtp: flags={flags}, pt={pt}, seqno={seqno}')
+        if self._recv_seqno != seqno:
+            # Packet drop detected. Cancelling the current payload.
+            self.logger.info(f'process_rtp: DROP {seqno}/{self._recv_seqno}')
+            self._recv_buf = None
+        if (pt & 0x7f) == 96 and self._recv_buf is not None:
+            self._recv_buf += data[4:]
+        if pt & 0x80:
+            # Significant packet - ending the payload.
+            if self._recv_buf is not None:
+                self.process_data(self._recv_buf)
+            self._recv_buf = b''
+        self._recv_seqno = seqno+1
+        return
+
+    def process_data(self, data):
+        self.logger.info(f'server: process_data: {len(data)}')
+        self.send(b'moo'+data)
+        return
 
 class RTSPHandler(socketserver.StreamRequestHandler):
 
@@ -178,7 +258,7 @@ class RTSPHandler(socketserver.StreamRequestHandler):
         self.logger.info(f'handle_detect: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}')
         text = f'+OK {port} {session_id.hex()}'
         self.wfile.write(text.encode('ascii')+b'\r\n')
-        handler = RTPHandler(sock_rtp, rtp_host, rtp_port, session_id)
+        handler = RTPHandler(self.server, sock_rtp, rtp_host, rtp_port, session_id)
         self.server.register(sock_rtp.fileno(), handler)
         handler.open()
         return
@@ -198,7 +278,7 @@ class RTSPServer(socketserver.TCPServer):
         for (fd,event) in self.epoll.poll(0):
             if fd in self.handlers:
                 (_,handler) = self.handlers[fd]
-                handler.recv()
+                handler.idle()
                 self.handlers[fd] = (timestamp, handler)
         for (fd,(t,handler)) in list(self.handlers.items()):
             if t + handler.timeout < timestamp:
@@ -252,8 +332,9 @@ def main(argv):
         client = RTSPClient(client_host, client_port)
         client.open()
         while True:
-            client.send(random.randbytes(100))
-            client.recv()
+            data = random.randbytes(60000)
+            client.send(data)
+            client.idle()
             time.sleep(0.1)
     else:
         # Server mode.
