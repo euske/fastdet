@@ -17,7 +17,7 @@ public class DummyDetector : IObjectDetector {
     }
 
     // Uninitializes the endpoint connection.
-    public void Close() {
+    public void Dispose() {
     }
 
     // Sends the image to the queue and returns the request id;

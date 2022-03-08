@@ -48,7 +48,7 @@ public enum YLDetMode {
 //    }
 //  }
 //
-interface IObjectDetector {
+interface IObjectDetector : IDisposable {
 
     // Detection mode.
     YLDetMode Mode { get; set; }
@@ -57,8 +57,6 @@ interface IObjectDetector {
 
     // Initializes the endpoint connection.
     void Open(string url);
-    // Uninitializes the endpoint connection.
-    void Close();
 
     // Sends the image to the queue and returns the request id;
     uint DetectImage(Texture image);
