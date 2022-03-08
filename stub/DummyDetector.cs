@@ -34,6 +34,7 @@ public class DummyDetector : IObjectDetector {
         result1.RequestId = 1;
         result1.SentTime = DateTime.Now;
         result1.RecvTime = DateTime.Now;
+        result1.InferenceTime = 0;
         result1.Objects = new YLObject[] { obj1 };
         return new YLResult[] { result1 };
     }

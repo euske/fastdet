@@ -18,6 +18,7 @@ public struct YLResult {
     public uint RequestId;             // Request ID.
     public DateTime SentTime;          // Timestamp (sent).
     public DateTime RecvTime;          // Timestamp (received).
+    public float InferenceTime;        // Inference time (in second).
     public YLObject[] Objects;         // List of detected objects.
 }
 
