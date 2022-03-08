@@ -15,14 +15,22 @@ public class DetectionTest : MonoBehaviour
     {
         _webcam = new WebCamTexture();
         _webcam.Play();
-        _detector = new DummyDetector();
+        _detector = new RemoteYOLODetector();
+        _detector.Open("foo");
 
         rawImage.texture = _webcam;
     }
 
-    void onDisable()
+    void OnDisable()
     {
         _webcam.Stop();
+    }
+
+    void OnDestroy()
+    {
+        if (_webcam != null) Destroy(_webcam);
+        _detector?.Dispose();
+        _detector = null;
     }
 
     void Update()
