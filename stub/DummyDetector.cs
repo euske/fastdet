@@ -1,6 +1,7 @@
 ///  DummyDetector.cs
 ///
 using System;
+using UnityEngine;
 
 namespace net.sss_consortium.fastdet {
 
