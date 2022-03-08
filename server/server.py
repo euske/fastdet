@@ -19,6 +19,10 @@ import struct
 import random
 from datetime import datetime, timedelta
 
+# random.randbytes() is only supported in 3.9.
+def randbytes(n):
+    return bytes( random.randrange(256) for _ in range(n) )
+
 
 ##  RTSPClient
 ##
@@ -249,7 +253,7 @@ class RTSPHandler(socketserver.StreamRequestHandler):
             self.logger.error(f'handle_detect: invalid args: args={args!r}')
             return
         (rtp_host, _) = self.client_address
-        session_id = random.randbytes(4)
+        session_id = randbytes(4)
         sock_rtp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock_rtp.setblocking(False)
         sock_rtp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -332,7 +336,7 @@ def main(argv):
         client = RTSPClient(client_host, client_port)
         client.open()
         while True:
-            data = random.randbytes(60000)
+            data = randbytes(60000)
             client.send(data)
             client.idle()
             time.sleep(0.1)
