@@ -23,6 +23,20 @@ from datetime import datetime, timedelta
 def randbytes(n):
     return bytes( random.randrange(256) for _ in range(n) )
 
+def perform_detection(data, mode=None):
+    (conf, klass, x, y, w, h) = (255,1,10,10,100,100)
+    result = struct.pack('>BBhhhh', conf, klass, x, y, w, h)
+    return result
+
+def parse_result(data):
+    i = 0
+    a = []
+    while i < len(data):
+        (conf, klass, x, y, w, h) = struct.unpack('>BBhhhh', data[i:i+10])
+        a.append((conf, klass, x, y, w, h))
+        i += 10
+    return a
+
 
 ##  RTSPClient
 ##
@@ -52,10 +66,10 @@ class RTSPClient:
         self.sock_rtsp.connect((self.host, self.port))
         self.logger.info(f'open: connected.')
         req = f'DETECT {lport} {self.path}'
-        self.logger.debug(f'send: {req!r}')
+        self.logger.debug(f'send: req={req!r}')
         self.sock_rtsp.send(req.encode('ascii')+b'\r\n')
         resp = self.sock_rtsp.recv(self.BUFSIZ)
-        self.logger.debug(f'recv: {resp!r}')
+        self.logger.debug(f'recv: resp={resp!r}')
         if resp.startswith(b'+OK '):
             f = resp[4:].strip().split()
             try:
@@ -120,7 +134,13 @@ class RTSPClient:
         return
 
     def process_data(self, data):
-        self.logger.info(f'client: process_data: {len(data)}')
+        self.logger.debug(f'client: process_data: len={len(data)}')
+        if 12 < len(data):
+            (tp, reqid, msec, length) = struct.unpack('>4sLLL', data[:16])
+            data = data[16:]
+            if len(data) == length:
+                result = parse_result(data)
+                self.logger.info(f'client: msec={msec}, reqid={reqid}, result={result}')
         return
 
 
@@ -203,8 +223,17 @@ class RTPHandler:
         return
 
     def process_data(self, data):
-        self.logger.info(f'server: process_data: {len(data)}')
-        self.send(b'moo'+data)
+        self.logger.debug(f'server: process_data: {len(data)}')
+        if 12 < len(data):
+            (tp, reqid, length) = struct.unpack('>4sLL', data[:12])
+            data = data[12:]
+            if len(data) == length:
+                self.logger.info(f'server: perform_detection: len={len(data)}')
+                t0 = time.time()
+                data = perform_detection(data, self.server.mode)
+                msec = int((time.time() - t0)*1000)
+                header = struct.pack('>4sLLL', b'YOLO', reqid, msec, len(data))
+                self.send(header+data)
         return
 
 class RTSPHandler(socketserver.StreamRequestHandler):
@@ -269,8 +298,9 @@ class RTSPHandler(socketserver.StreamRequestHandler):
 
 class RTSPServer(socketserver.TCPServer):
 
-    def __init__(self, server_address):
+    def __init__(self, server_address, mode=None):
         super().__init__(server_address, RTSPHandler)
+        self.mode = mode
         self.logger = logging.getLogger()
         self.epoll = select.epoll()
         self.handlers = {}
@@ -309,18 +339,21 @@ class RTSPServer(socketserver.TCPServer):
 def main(argv):
     import getopt
     def usage():
-        print(f'usage: {argv[0]} [-d] [-s port] [-c host:port]]')
+        print(f'usage: {argv[0]} [-d] [-m mode] [-s port] [-c host:port]] [-i interval]')
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'ds:c:')
+        (opts, args) = getopt.getopt(argv[1:], 'dm:s:c:i:')
     except getopt.GetoptError:
         return usage()
     level = logging.INFO
+    mode = None
     server_port = 10000
     client_host = None
     client_port = server_port
+    interval = 0.1
     for (k, v) in opts:
         if k == '-d': level = logging.DEBUG
+        elif k == '-m': mode = v
         elif k == '-s': server_port = int(v)
         elif k == '-c':
             (client_host,_,x) = v.partition(':')
@@ -328,6 +361,7 @@ def main(argv):
                 client_host = 'localhost'
             if x:
                 client_port = int(x)
+        elif k == '-t': interval = float(v)
     logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=level)
 
     if client_host is not None:
@@ -335,17 +369,24 @@ def main(argv):
         logging.info(f'connecting: {client_host}:{client_port}...')
         client = RTSPClient(client_host, client_port)
         client.open()
+        files = []
+        for path in args:
+            with open(path, 'rb') as fp:
+                files.append(fp.read())
+        reqid = 0
         while True:
-            data = randbytes(60000)
-            client.send(data)
-            client.idle()
-            time.sleep(0.1)
+            for data in files:
+                reqid += 1
+                header = struct.pack('>4sLL', b'JPEG', reqid, len(data))
+                client.send(header+data)
+                client.idle()
+                time.sleep(interval)
     else:
         # Server mode.
         logging.info(f'listening: at {server_port}...')
         RTSPServer.allow_reuse_address = True
         timeout = 0.05
-        with RTSPServer(('', server_port)) as server:
+        with RTSPServer(('', server_port), mode=mode) as server:
             server.serve_forever(timeout)
 
     return 0
