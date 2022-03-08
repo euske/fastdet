@@ -17,8 +17,9 @@ struct YLObject {
 //
 struct YLResult {
     uint RequestId;             // Request ID.
-    uint Timestamp0;            // Timestamp (local).
-    uint Timestamp1;            // Timestamp (remote).
+    DateTime SentTime;          // Timestamp (sent).
+    DateTime RecvTime;          // Timestamp (received).
+    float InferenceTime;        // Inference time (in second).
     YLObject[] Objects;         // List of detected objects.
 }
 
@@ -38,17 +39,15 @@ struct YLResult {
 //    }
 //  }
 //
-interface IObjectDetector {
+interface IObjectDetector : IDisposable {
 
     // Detection mode.
-    string Mode { get; set; }
+    YLDetMode Mode { get; set; }
     // Detection threshold.
     float Threshold { get; set; }
 
     // Initializes the endpoint connection.
     void Open(string url);
-    // Uninitializes the endpoint connection.
-    void Close();
 
     // Sends the image to the queue and returns the request id;
     uint DetectImage(Texture image);
