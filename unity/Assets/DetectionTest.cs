@@ -16,7 +16,8 @@ public class DetectionTest : MonoBehaviour
         _webcam = new WebCamTexture();
         _webcam.Play();
         _detector = new RemoteYOLODetector();
-        _detector.Open("foo");
+        _detector.Open("rtsp://192.168.1.10:10000/detect");
+        _detector.Mode = YLDetMode.ServerOnly;
 
         rawImage.texture = _webcam;
     }
