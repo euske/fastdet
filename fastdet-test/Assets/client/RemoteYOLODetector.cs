@@ -19,8 +19,8 @@ public class RemoteYOLODetector : IObjectDetector {
     // Detection threshold.
     public float Threshold { get; set; }
 
-    private RenderTexture _scaleBuffer;
-    private Texture2D _buffer;
+    private RenderTexture _buffer;
+    private Texture2D _pixels;
     private TcpClient _tcp;
     private UdpClient _udp;
     private byte[] _session_id;
@@ -126,8 +126,8 @@ public class RemoteYOLODetector : IObjectDetector {
     };
 
     public RemoteYOLODetector() {
-        _scaleBuffer = new RenderTexture(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, 0);
-        _buffer = new Texture2D(_scaleBuffer.width, _scaleBuffer.height);
+        _buffer = new RenderTexture(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, 0);
+        _pixels = new Texture2D(_buffer.width, _buffer.height);
     }
 
     private static void logit(string fmt, params object[] args) {
@@ -324,13 +324,13 @@ public class RemoteYOLODetector : IObjectDetector {
 
     // Uninitializes the endpoint connection.
     public void Dispose() {
-        if (_scaleBuffer != null) {
-            UnityEngine.Object.Destroy(_scaleBuffer);
-            _scaleBuffer = null;
-        }
         if (_buffer != null) {
             UnityEngine.Object.Destroy(_buffer);
             _buffer = null;
+        }
+        if (_pixels != null) {
+            UnityEngine.Object.Destroy(_pixels);
+            _pixels = null;
         }
         if (_tcp != null) {
             _tcp.Close();
@@ -347,25 +347,33 @@ public class RemoteYOLODetector : IObjectDetector {
 
     // Sends the image to the queue and returns the request id;
     public uint DetectImage(Texture image) {
-        // Resize the texture.
-        Graphics.Blit(image, _scaleBuffer);
-        return DetectImage(_scaleBuffer);
+        Rect bounds;
+        if (image.width < image.height) {
+            float ratio = (float)image.width/image.height;
+            bounds = new Rect(0, (1-ratio)/2, 1, ratio);
+        } else {
+            float ratio = (float)image.height/image.width;
+            bounds = new Rect((1-ratio)/2, 0, ratio, 1);
+        }
+        return DetectImage(image, bounds);
     }
 
-    public uint DetectImage(RenderTexture rTex) {
+    public uint DetectImage(Texture image, Rect rect) {
+        // Resize the texture.
+        Graphics.Blit(image, _buffer, rect.size, rect.position);
         // Convert the texture.
         RenderTexture temp = RenderTexture.active;
-        RenderTexture.active = rTex;
-        _buffer.ReadPixels(new Rect(0, 0, _buffer.width, _buffer.height), 0, 0);
-        _buffer.Apply();
+        RenderTexture.active = _buffer;
+        _pixels.ReadPixels(new Rect(0, 0, _buffer.width, _buffer.height), 0, 0);
+        _pixels.Apply();
         RenderTexture.active = temp;
         _requestId++;
         switch (Mode) {
         case YLDetMode.ClientOnly:
-            performLocalDetection(_requestId, _buffer);
+            performLocalDetection(_requestId, _pixels);
             break;
         case YLDetMode.ServerOnly:
-            requestRemoteDetection(_requestId, _buffer);
+            requestRemoteDetection(_requestId, _pixels);
             break;
         default:
             addDummyResult(_requestId);
@@ -374,19 +382,19 @@ public class RemoteYOLODetector : IObjectDetector {
         return _requestId;
     }
 
-    private void performLocalDetection(uint requestId, Texture2D buffer) {
-        var data = new TextureAsTensorData(buffer, 3);
+    private void performLocalDetection(uint requestId, Texture2D pixels) {
+        var data = new TextureAsTensorData(pixels, 3);
     }
 
     private static byte[] JPEG_TYPE = { (byte)'J', (byte)'P', (byte)'E', (byte)'G' };
-    private void requestRemoteDetection(uint requestId, Texture2D buffer) {
-        byte[] image = buffer.EncodeToJPG();
+    private void requestRemoteDetection(uint requestId, Texture2D pixels) {
         _sent.Add(requestId, DateTime.Now);
+        byte[] data = pixels.EncodeToJPG();
         using (MemoryStream buf = new MemoryStream()) {
             writeBytes(buf, JPEG_TYPE);
             writeUInt32(buf, requestId);
-            writeUInt32(buf, (uint)image.Length);
-            writeBytes(buf, image);
+            writeUInt32(buf, (uint)data.Length);
+            writeBytes(buf, data);
             sendRTP(buf.ToArray());
         }
     }
@@ -395,7 +403,7 @@ public class RemoteYOLODetector : IObjectDetector {
         YLObject obj1 = new YLObject();
         obj1.Label = "cat";
         obj1.Conf = 1.0f;
-        obj1.BBox = new Rect(0.1f, 0.1f, 0.2f, 0.2f);
+        obj1.BBox = new Rect(0.5f, 0.5f, 0.4f, 0.4f);
         YLResult result1 = new YLResult();
         result1.RequestId = requestId;
         result1.SentTime = DateTime.Now;
