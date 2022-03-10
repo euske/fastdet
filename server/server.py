@@ -24,16 +24,16 @@ def randbytes(n):
     return bytes( random.randrange(256) for _ in range(n) )
 
 def perform_detection(data, mode=None):
-    (conf, klass, x, y, w, h) = (255,1,10,10,100,100)
-    result = struct.pack('>BBhhhh', conf, klass, x, y, w, h)
+    (klass, conf, x, y, w, h) = (1,255,10,10,100,100)
+    result = struct.pack('>BBhhhh', klass, conf, x, y, w, h)
     return result
 
 def parse_result(data):
     i = 0
     a = []
     while i < len(data):
-        (conf, klass, x, y, w, h) = struct.unpack('>BBhhhh', data[i:i+10])
-        a.append((conf, klass, x, y, w, h))
+        (klass, conf, x, y, w, h) = struct.unpack('>BBhhhh', data[i:i+10])
+        a.append((klass, conf, x, y, w, h))
         i += 10
     return a
 
