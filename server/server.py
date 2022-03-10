@@ -83,7 +83,7 @@ def soft_nms(objs, threshold):
 class DummyDetector:
 
     def perform(self, data):
-        (klass, conf, x, y, w, h) = (16,255,10,10,400,400) # cat
+        (klass, conf, x, y, w, h) = (16, 1.0, 0.5*416,0.5*416, 0.4*416,0.4*416) # cat
         return [(klass, conf, x, y, w, h)]
 
 class ONNXDetector:
@@ -114,9 +114,9 @@ class ONNXDetector:
         for output in self.model.run(None, {'input': a}):
             objs.extend(self.process_yolo(output[0]))
         objs = soft_nms(objs, threshold=0.3)
-        results = [ (obj.klass, int(obj.conf*255),
-                     int(obj.bbox[0]*width), int(obj.bbox[1]*height),
-                     int(obj.bbox[2]*width), int(obj.bbox[3]*height)) for obj in objs ]
+        results = [ (obj.klass, obj.conf,
+                     obj.bbox[0]*width, obj.bbox[1]*height,
+                     obj.bbox[2]*width, obj.bbox[3]*height) for obj in objs ]
         self.logger.info(f'perform: results={results}')
         return results
 
@@ -346,10 +346,14 @@ class RTPHandler:
             (tp, reqid, length) = struct.unpack('>4sLL', data[:12])
             data = data[12:]
             if len(data) == length:
+                if self.server.dbgout is not None:
+                    with open(self.server.dbgout, 'wb') as fp:
+                        fp.write(data)
                 t0 = time.time()
                 result = b''
                 for (klass, conf, x, y, w, h) in self.server.detector.perform(data):
-                    result += struct.pack('>BBhhhh', klass, conf, x, y, w, h)
+                    result += struct.pack(
+                        '>BBhhhh', klass, int(conf*255), int(x), int(y), int(w), int(h))
                 msec = int((time.time() - t0)*1000)
                 header = struct.pack('>4sLLL', b'YOLO', reqid, msec, len(result))
                 self.send(header+result)
@@ -418,9 +422,10 @@ class RTSPHandler(socketserver.StreamRequestHandler):
 
 class RTSPServer(socketserver.TCPServer):
 
-    def __init__(self, server_address, detector):
+    def __init__(self, server_address, detector, dbgout=None):
         super().__init__(server_address, RTSPHandler)
         self.detector = detector
+        self.dbgout = dbgout
         self.logger = logging.getLogger()
         self.epoll = select.epoll()
         self.handlers = {}
@@ -459,10 +464,10 @@ class RTSPServer(socketserver.TCPServer):
 def main(argv):
     import getopt
     def usage():
-        print(f'usage: {argv[0]} [-d] [-m mode] [-s port] [-c host:port]] [-i interval]')
+        print(f'usage: {argv[0]} [-d] [-o dbgout] [-m mode] [-s port] [-c host:port]] [-i interval]')
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'dm:s:c:i:')
+        (opts, args) = getopt.getopt(argv[1:], 'do:m:s:c:i:')
     except getopt.GetoptError:
         return usage()
     level = logging.INFO
@@ -471,8 +476,10 @@ def main(argv):
     client_host = None
     client_port = server_port
     interval = 0.1
+    dbgout = None
     for (k, v) in opts:
         if k == '-d': level = logging.DEBUG
+        elif k == '-o': dbgout = v
         elif k == '-m': mode = v
         elif k == '-s': server_port = int(v)
         elif k == '-c':
@@ -510,7 +517,7 @@ def main(argv):
         logging.info(f'listening: at {server_port}...')
         RTSPServer.allow_reuse_address = True
         timeout = 0.05
-        with RTSPServer(('', server_port), detector) as server:
+        with RTSPServer(('', server_port), detector, dbgout=dbgout) as server:
             server.serve_forever(timeout)
 
     return 0
