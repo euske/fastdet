@@ -17,25 +17,138 @@ import socket
 import socketserver
 import struct
 import random
+from math import exp
 from datetime import datetime, timedelta
 
-# random.randbytes() is only supported in 3.9.
-def randbytes(n):
-    return bytes( random.randrange(256) for _ in range(n) )
+def sigmoid(x):
+    return 1/(1+exp(-x))
 
-def perform_detection(data, mode=None):
-    (klass, conf, x, y, w, h) = (1,255,10,10,100,100)
-    result = struct.pack('>BBhhhh', klass, conf, x, y, w, h)
+def argmax(a, key=lambda x:x):
+    (imax, vmax) = (None, None)
+    for (i,x) in enumerate(a):
+        v = key(x)
+        if vmax is None or vmax < v:
+            (imax, vmax) = (i, v)
+    if imax is None: raise ValueError(a)
+    return (imax, vmax)
+
+def rect_intersect(rect0, rect1):
+    (x0,y0,w0,h0) = rect0
+    (x1,y1,w1,h1) = rect1
+    x = max(x0, x1)
+    y = max(y0, y1)
+    w = min(x0+w0, x1+w1) - x
+    h = min(y0+h0, y1+h1) - y
+    return (x, y, w, h)
+
+
+##  YOLOObject
+##
+class YOLOObject:
+
+    def __init__(self, klass, conf, bbox):
+        self.klass = klass
+        self.conf = conf
+        self.bbox = bbox
+        return
+
+    def __repr__(self):
+        return (f'<YOLOObject({self.klass}): conf={self.conf:.3f}, bbox={self.bbox}>')
+
+    def get_iou(self, bbox):
+        (_,_,w,h) = rect_intersect(self.bbox, bbox)
+        if w <= 0 or h <= 0: return 0
+        (_,_,w0,h0) = self.bbox
+        return (w*h)/(w0*h0)
+
+# soft_nms: https://arxiv.org/abs/1704.04503
+def soft_nms(objs, threshold):
+    result = []
+    score = { obj:obj.conf for obj in objs }
+    while objs:
+        (i,conf) = argmax(objs, key=lambda obj:score[obj])
+        if conf < threshold: break
+        m = objs[i]
+        result.append(m)
+        del objs[i]
+        for obj in objs:
+            v = m.get_iou(obj.bbox)
+            score[obj] = score[obj] * exp(-3*v*v)
+    result.sort(key=lambda obj:score[obj], reverse=True)
     return result
 
-def parse_result(data):
-    i = 0
-    a = []
-    while i < len(data):
-        (klass, conf, x, y, w, h) = struct.unpack('>BBhhhh', data[i:i+10])
-        a.append((klass, conf, x, y, w, h))
-        i += 10
-    return a
+
+##  Detector
+##
+class DummyDetector:
+
+    def perform(self, data):
+        (klass, conf, x, y, w, h) = (1,255,10,10,100,100)
+        return [(klass, conf, x, y, w, h)]
+
+class ONNXDetector:
+
+    IMAGE_SIZE = (416,416)
+    NUM_CLASS = 80
+    ANCHORS = ((81/32, 82/32), (135/32,169/32), (344/32,319/32))
+
+    def __init__(self, path, mode=None):
+        import onnxruntime as ort
+        providers = ['CPUExecutionProvider']
+        if mode == 'cuda':
+            providers.insert(0, 'CUDAExecutionProvider')
+        self.model = ort.InferenceSession(path, providers=providers)
+        self.logger = logging.getLogger()
+        self.logger.info(f'load: path={path}, providers={providers}')
+        return
+
+    def perform(self, data):
+        from PIL import Image
+        import numpy as np
+        (width, height) = self.IMAGE_SIZE
+        img = Image.open(io.BytesIO(data))
+        if img.size != self.IMAGE_SIZE:
+            raise ValueError('invalid image size')
+        a = (np.array(img).reshape(1,height,width,3)/255).astype(np.float32)
+        objs = []
+        for output in self.model.run(None, {'input': a}):
+            objs.extend(self.process_yolo(output[0]))
+        objs = soft_nms(objs, threshold=0.3)
+        results = [ (obj.klass, int(obj.conf*255),
+                     int(obj.bbox[0]*width), int(obj.bbox[1]*height),
+                     int(obj.bbox[2]*width), int(obj.bbox[3]*height)) for obj in objs ]
+        self.logger.info(f'perform: results={results}')
+        return results
+
+    def process_yolo(self, m, threshold=0.1):
+        (rows,cols,_) = m.shape
+        a = []
+        for (y,row) in enumerate(m):
+            for (x,col) in enumerate(row):
+                for (k,(ax,ay)) in enumerate(self.ANCHORS):
+                    b = k*(5+self.NUM_CLASS)
+                    x = sigmoid(col[b+0]) / cols
+                    y = sigmoid(col[b+1]) / rows
+                    w = ax * exp(col[b+2]) / cols
+                    h = ay * exp(col[b+3]) / rows
+                    conf = sigmoid(col[b+4])
+                    mp = mi = None
+                    for i in range(self.NUM_CLASS):
+                        p = col[b+5+i]
+                        if mp is None or mp < p:
+                            (mp,mi) = (p,i)
+                    conf *= sigmoid(mp)
+                    if threshold < conf:
+                        a.append(YOLOObject(mi, conf, (x, y, w, h)))
+        return a
+
+    @classmethod
+    def test_detector(klass):
+        detector = klass('./models/yolov3-tiny.onnx')
+        with open('./testdata/dog.jpg', 'rb') as fp:
+            data = fp.read()
+        print(detector.perform(data))
+        return
 
 
 ##  RTSPClient
@@ -139,7 +252,12 @@ class RTSPClient:
             (tp, reqid, msec, length) = struct.unpack('>4sLLL', data[:16])
             data = data[16:]
             if len(data) == length:
-                result = parse_result(data)
+                i = 0
+                result = []
+                while i < len(data):
+                    (klass, conf, x, y, w, h) = struct.unpack('>BBhhhh', data[i:i+10])
+                    result.append((klass, conf, x, y, w, h))
+                    i += 10
                 self.logger.info(f'client: msec={msec}, reqid={reqid}, result={result}')
         return
 
@@ -228,12 +346,13 @@ class RTPHandler:
             (tp, reqid, length) = struct.unpack('>4sLL', data[:12])
             data = data[12:]
             if len(data) == length:
-                self.logger.info(f'server: perform_detection: len={len(data)}')
                 t0 = time.time()
-                data = perform_detection(data, self.server.mode)
+                result = b''
+                for (klass, conf, x, y, w, h) in self.server.detector.perform(data):
+                    result += struct.pack('>BBhhhh', klass, conf, x, y, w, h)
                 msec = int((time.time() - t0)*1000)
-                header = struct.pack('>4sLLL', b'YOLO', reqid, msec, len(data))
-                self.send(header+data)
+                header = struct.pack('>4sLLL', b'YOLO', reqid, msec, len(result))
+                self.send(header+result)
         return
 
 class RTSPHandler(socketserver.StreamRequestHandler):
@@ -282,7 +401,8 @@ class RTSPHandler(socketserver.StreamRequestHandler):
             self.logger.error(f'handle_detect: invalid args: args={args!r}')
             return
         (rtp_host, _) = self.client_address
-        session_id = randbytes(4)
+        # random.randbytes() is only supported in 3.9.
+        session_id = bytes( random.randrange(256) for _ in range(4) )
         sock_rtp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock_rtp.setblocking(False)
         sock_rtp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -298,9 +418,9 @@ class RTSPHandler(socketserver.StreamRequestHandler):
 
 class RTSPServer(socketserver.TCPServer):
 
-    def __init__(self, server_address, mode=None):
+    def __init__(self, server_address, detector):
         super().__init__(server_address, RTSPHandler)
-        self.mode = mode
+        self.detector = detector
         self.logger = logging.getLogger()
         self.epoll = select.epoll()
         self.handlers = {}
@@ -386,7 +506,11 @@ def main(argv):
         logging.info(f'listening: at {server_port}...')
         RTSPServer.allow_reuse_address = True
         timeout = 0.05
-        with RTSPServer(('', server_port), mode=mode) as server:
+        if args:
+            detector = ONNXDetector(args[0], mode=mode)
+        else:
+            detector = DummyDetector()
+        with RTSPServer(('', server_port), detector) as server:
             server.serve_forever(timeout)
 
     return 0
