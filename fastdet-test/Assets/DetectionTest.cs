@@ -7,6 +7,7 @@ using net.sss_consortium.fastdet;
 public class DetectionTest : MonoBehaviour
 {
     public RawImage rawImage = null;
+    public string serverUrl = null;
 
     private WebCamTexture _webcam;
     private IObjectDetector _detector;
@@ -16,8 +17,10 @@ public class DetectionTest : MonoBehaviour
         _webcam = new WebCamTexture();
         _webcam.Play();
         _detector = new RemoteYOLODetector();
-        _detector.Open("rtsp://192.168.1.10:10000/detect");
-        _detector.Mode = YLDetMode.ServerOnly;
+        if (serverUrl != null) {
+            _detector.Open(serverUrl);
+            _detector.Mode = YLDetMode.ServerOnly;
+        }
 
         rawImage.texture = _webcam;
     }
