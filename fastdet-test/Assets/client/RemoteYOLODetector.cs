@@ -29,10 +29,104 @@ public class RemoteYOLODetector : IObjectDetector {
     private uint _send_seqno;
 
     private uint _requestId = 0;
+    private Dictionary<uint, DateTime> _sent = new Dictionary<uint, DateTime>();
     private List<YLResult> _results = new List<YLResult>();
 
+    private static byte[] RTP_DUMMY_PACKET = {
+        0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    };
+
+    private const float REQUEST_TIMEOUT = 3f;
+
+    private const int IMAGE_SIZE_WIDTH = 416;
+    private const int IMAGE_SIZE_HEIGHT = 416;
+    private static string[] LABELS = {
+        // COCO dataset labels.
+        null,                   // UNDEFINED
+        "person",
+        "bicycle",
+        "car",
+        "motorbike",
+        "aeroplane",
+        "bus",
+        "train",
+        "truck",
+        "boat",
+        "traffic light",
+        "fire hydrant",
+        "stop sign",
+        "parking meter",
+        "bench",
+        "bird",
+        "cat",
+        "dog",
+        "horse",
+        "sheep",
+        "cow",
+        "elephant",
+        "bear",
+        "zebra",
+        "giraffe",
+        "backpack",
+        "umbrella",
+        "handbag",
+        "tie",
+        "suitcase",
+        "frisbee",
+        "skis",
+        "snowboard",
+        "sports ball",
+        "kite",
+        "baseball bat",
+        "baseball glove",
+        "skateboard",
+        "surfboard",
+        "tennis racket",
+        "bottle",
+        "wine glass",
+        "cup",
+        "fork",
+        "knife",
+        "spoon",
+        "bowl",
+        "banana",
+        "apple",
+        "sandwich",
+        "orange",
+        "broccoli",
+        "carrot",
+        "hot dog",
+        "pizza",
+        "donut",
+        "cake",
+        "chair",
+        "sofa",
+        "pottedplant",
+        "bed",
+        "diningtable",
+        "toilet",
+        "tvmonitor",
+        "laptop",
+        "mouse",
+        "remote",
+        "keyboard",
+        "cell phone",
+        "microwave",
+        "oven",
+        "toaster",
+        "sink",
+        "refrigerator",
+        "book",
+        "clock",
+        "vase",
+        "scissors",
+        "teddy bear",
+        "hair drier",
+        "toothbrush",
+    };
+
     public RemoteYOLODetector() {
-        _scaleBuffer = new RenderTexture(416, 416, 0);
+        _scaleBuffer = new RenderTexture(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, 0);
         _buffer = new Texture2D(_scaleBuffer.width, _scaleBuffer.height);
     }
 
@@ -54,6 +148,20 @@ public class RemoteYOLODetector : IObjectDetector {
         s.WriteByte((byte)((v >> 16) & 0xff));
         s.WriteByte((byte)((v >> 8) & 0xff));
         s.WriteByte((byte)((v >> 0) & 0xff));
+    }
+
+    private static int parseInt16(byte[] b, uint i) {
+        int v = (b[i] << 8) | b[i+1];
+        return (v < 32768)? v : (v-32768);
+    }
+
+    private static uint parseUInt16(byte[] b, uint i) {
+        return ( ((uint)b[i] << 8) | ((uint)b[i+1]) );
+    }
+
+    private static uint parseUInt32(byte[] b, uint i) {
+        return ( ((uint)b[i] << 24) | ((uint)b[i+1] << 16) |
+                 ((uint)b[i+2] << 8) | ((uint)b[i+3]) );
     }
 
     // Initializes the endpoint connection.
@@ -112,13 +220,8 @@ public class RemoteYOLODetector : IObjectDetector {
         _udp.Connect(addr, rtp_port);
 
         // Send the dummy packet to initiate the stream.
-        byte[] packet = {
-            0x80, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-        };
-        _udp.Send(packet, packet.Length);
-        _recv_buf = new MemoryStream();
+        _udp.Send(RTP_DUMMY_PACKET, RTP_DUMMY_PACKET.Length);
+        _recv_buf = null;
         _recv_seqno = 0;
         _send_seqno = 1;
         _udp.BeginReceive(new AsyncCallback(onRecvRTP), _udp);
@@ -141,41 +244,81 @@ public class RemoteYOLODetector : IObjectDetector {
                 buf.Write(data, i0, i1-i0);
                 _udp.Send(buf.ToArray(), (int)buf.Length);
             }
-            _send_seqno = (_send_seqno+1) & 0xffff;
+            _send_seqno = (_send_seqno == 0xffff)? 1 : (_send_seqno+1);
             i0 = i1;
         }
     }
 
     private void onRecvRTP(IAsyncResult ar) {
-        if (_udp == null) return;
+        if (_udp == null) return; // ???
         IPEndPoint ep = null;
         byte[] data = _udp.EndReceive(ar, ref ep);
-        if (data.Length < 4) return;
+        if (data.Length < 4) return; // error
         byte flags = data[0];
         byte pt = data[1];
-        uint seqno = ((uint)data[2] << 8) | (uint)data[3];
-        if (_recv_seqno != seqno) {
-            logit("onRecvRTP: DROP {0}/{1}", seqno, _recv_seqno);
-            if (_recv_buf != null) {
-                _recv_buf.Dispose();
+        uint seqno = parseUInt16(data, 2);
+        if (seqno == 0) {
+            ;
+        } else {
+            if (_recv_seqno == 0) {
+                _recv_buf = new MemoryStream();
+                _recv_seqno = seqno;
+            } else if (_recv_seqno != seqno) {
+                logit("onRecvRTP: DROP: recv_seqno={0}, seqno={1}", _recv_seqno, seqno);
+                _recv_buf = null;
             }
-            _recv_buf = null;
-        }
-        if ((pt & 0x7f) == 96 && _recv_buf != null) {
-            _recv_buf.Write(data, 4, data.Length-4);
-        }
-        if ((pt & 0x80) != 0) {
-            if (_recv_buf != null) {
-                recvData(_recv_buf.ToArray());
+            if ((pt & 0x7f) == 96) {
+                if (_recv_buf != null) {
+                    _recv_buf.Write(data, 4, data.Length-4);
+                }
             }
-            _recv_buf = new MemoryStream();
+            if ((pt & 0x80) != 0) {
+                if (_recv_buf != null) {
+                    recvData(_recv_buf.ToArray());
+                }
+                _recv_buf = new MemoryStream();
+            }
+            _recv_seqno = (seqno == 0xffff)? 1 : (seqno+1);
         }
-        _recv_seqno = (seqno+1) & 0xffff;
         _udp.BeginReceive(new AsyncCallback(onRecvRTP), _udp);
     }
 
     private void recvData(byte[] data) {
-        logit("recvData: data={0}", data.Length);
+        if (data.Length < 16) return; // error
+        if (data[0] == 'Y' && data[1] == 'O' && data[2] == 'L' && data[3] == 'O') {
+            // Parse results.
+            uint requestId = parseUInt32(data, 4);
+            if (!_sent.ContainsKey(requestId)) return;
+            uint msec = parseUInt32(data, 8);
+            uint length = parseUInt32(data, 12);
+            List<YLObject> objs = new List<YLObject>();
+            for (uint i = 16; i+10 <= data.Length; i += 10) {
+                // Parse one object.
+                int klass = data[i];
+                if (klass == 0 || LABELS.Length <= klass) continue;
+                float conf = data[i+1];
+                float x = parseInt16(data, i+2);
+                float y = parseInt16(data, i+4);
+                float w = parseInt16(data, i+6);
+                float h = parseInt16(data, i+8);
+                YLObject obj1 = new YLObject();
+                obj1.Label = LABELS[klass];
+                obj1.Conf = conf / 255f;
+                obj1.BBox = new Rect(
+                    x/IMAGE_SIZE_WIDTH, y/IMAGE_SIZE_HEIGHT,
+                    w/IMAGE_SIZE_WIDTH, h/IMAGE_SIZE_HEIGHT);
+                objs.Add(obj1);
+            }
+            YLResult result1 = new YLResult();
+            result1.RequestId = requestId;
+            result1.SentTime = _sent[requestId];
+            result1.RecvTime = DateTime.Now;
+            result1.InferenceTime = msec / 1000f;
+            result1.Objects = objs.ToArray();
+            logit("recvData: result1={0}", result1);
+            _sent.Remove(requestId);
+            _results.Add(result1);
+        }
     }
 
     // Uninitializes the endpoint connection.
@@ -234,10 +377,12 @@ public class RemoteYOLODetector : IObjectDetector {
         var data = new TextureAsTensorData(buffer, 3);
     }
 
+    private static byte[] JPEG_TYPE = { (byte)'J', (byte)'P', (byte)'E', (byte)'G' };
     private void requestRemoteDetection(uint requestId, Texture2D buffer) {
         byte[] image = buffer.EncodeToJPG();
+        _sent.Add(requestId, DateTime.Now);
         using (MemoryStream buf = new MemoryStream()) {
-            writeBytes(buf, new byte[] { (byte)'J', (byte)'P', (byte)'E', (byte)'G' });
+            writeBytes(buf, JPEG_TYPE);
             writeUInt32(buf, requestId);
             writeUInt32(buf, (uint)image.Length);
             writeBytes(buf, image);
@@ -249,7 +394,7 @@ public class RemoteYOLODetector : IObjectDetector {
         YLObject obj1 = new YLObject();
         obj1.Label = "cat";
         obj1.Conf = 1.0f;
-        obj1.BBox = new Rect(10, 10, 100, 100);
+        obj1.BBox = new Rect(0.1f, 0.1f, 0.2f, 0.2f);
         YLResult result1 = new YLResult();
         result1.RequestId = requestId;
         result1.SentTime = DateTime.Now;
@@ -261,6 +406,7 @@ public class RemoteYOLODetector : IObjectDetector {
 
     // Gets the results (if any).
     public YLResult[] GetResults() {
+        // TODO: remove timeout keys from _sent.
         YLResult[] results = _results.ToArray();
         _results.Clear();
         return results;
