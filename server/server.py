@@ -139,7 +139,7 @@ class ONNXDetector:
                             (mp,mi) = (p,i)
                     conf *= sigmoid(mp)
                     if threshold < conf:
-                        a.append(YOLOObject(mi, conf, (x, y, w, h)))
+                        a.append(YOLOObject(mi+1, conf, (x, y, w, h)))
         return a
 
     @classmethod
@@ -503,13 +503,13 @@ def main(argv):
                 time.sleep(interval)
     else:
         # Server mode.
-        logging.info(f'listening: at {server_port}...')
-        RTSPServer.allow_reuse_address = True
-        timeout = 0.05
         if args:
             detector = ONNXDetector(args[0], mode=mode)
         else:
             detector = DummyDetector()
+        logging.info(f'listening: at {server_port}...')
+        RTSPServer.allow_reuse_address = True
+        timeout = 0.05
         with RTSPServer(('', server_port), detector) as server:
             server.serve_forever(timeout)
 
