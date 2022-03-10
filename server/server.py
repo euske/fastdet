@@ -83,7 +83,7 @@ def soft_nms(objs, threshold):
 class DummyDetector:
 
     def perform(self, data):
-        (klass, conf, x, y, w, h) = (1,255,10,10,100,100)
+        (klass, conf, x, y, w, h) = (16,255,10,10,400,400) # cat
         return [(klass, conf, x, y, w, h)]
 
 class ONNXDetector:

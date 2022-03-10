@@ -292,8 +292,9 @@ public class RemoteYOLODetector : IObjectDetector {
             uint msec = parseUInt32(data, 8);
             uint length = parseUInt32(data, 12);
             List<YLObject> objs = new List<YLObject>();
-            for (uint i = 16; i+10 <= data.Length; i += 10) {
+            for (uint n = 0; n+10 <= length; n += 10) {
                 // Parse one object.
+                uint i = 16+n;
                 int klass = data[i];
                 if (klass == 0 || LABELS.Length <= klass) continue;
                 float conf = data[i+1];
