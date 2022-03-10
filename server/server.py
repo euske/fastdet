@@ -80,24 +80,34 @@ def soft_nms(objs, threshold):
 
 ##  Detector
 ##
-class DummyDetector:
-
-    def perform(self, data):
-        (klass, conf, x, y, w, h) = (16, 1.0, 0.5*416,0.5*416, 0.4*416,0.4*416) # cat
-        return [(klass, conf, x, y, w, h)]
-
-class ONNXDetector:
+class Detector:
 
     IMAGE_SIZE = (416,416)
     NUM_CLASS = 80
+
+class DummyDetector(Detector):
+
+    def perform(self, data):
+        (width, height) = self.IMAGE_SIZE
+        klass = 16              # cat
+        conf = 1.0
+        x = 0.5*width
+        y = 0.5*height
+        w = 0.4*width
+        h = 0.4*height
+        return [(klass, conf, x, y, w, h)]
+
+class ONNXDetector(Detector):
+
     ANCHORS = ((81/32, 82/32), (135/32,169/32), (344/32,319/32))
 
-    def __init__(self, path, mode=None):
+    def __init__(self, path, mode=None, threshold=0.3):
         import onnxruntime as ort
         providers = ['CPUExecutionProvider']
         if mode == 'cuda':
             providers.insert(0, 'CUDAExecutionProvider')
         self.model = ort.InferenceSession(path, providers=providers)
+        self.threshold = threshold
         self.logger = logging.getLogger()
         self.logger.info(f'load: path={path}, providers={providers}')
         return
@@ -113,22 +123,22 @@ class ONNXDetector:
         objs = []
         for output in self.model.run(None, {'input': a}):
             objs.extend(self.process_yolo(output[0]))
-        objs = soft_nms(objs, threshold=0.3)
+        objs = soft_nms(objs, threshold=self.threshold)
         results = [ (obj.klass, obj.conf,
                      obj.bbox[0]*width, obj.bbox[1]*height,
                      obj.bbox[2]*width, obj.bbox[3]*height) for obj in objs ]
         self.logger.info(f'perform: results={results}')
         return results
 
-    def process_yolo(self, m, threshold=0.1):
+    def process_yolo(self, m):
         (rows,cols,_) = m.shape
         a = []
-        for (y,row) in enumerate(m):
-            for (x,col) in enumerate(row):
+        for (y0,row) in enumerate(m):
+            for (x0,col) in enumerate(row):
                 for (k,(ax,ay)) in enumerate(self.ANCHORS):
                     b = k*(5+self.NUM_CLASS)
-                    x = sigmoid(col[b+0]) / cols
-                    y = sigmoid(col[b+1]) / rows
+                    x = (x0 + sigmoid(col[b+0])) / cols
+                    y = (y0 + sigmoid(col[b+1])) / rows
                     w = ax * exp(col[b+2]) / cols
                     h = ay * exp(col[b+3]) / rows
                     conf = sigmoid(col[b+4])
@@ -138,8 +148,7 @@ class ONNXDetector:
                         if mp is None or mp < p:
                             (mp,mi) = (p,i)
                     conf *= sigmoid(mp)
-                    if threshold < conf:
-                        a.append(YOLOObject(mi+1, conf, (x, y, w, h)))
+                    a.append(YOLOObject(mi+1, conf, (x, y, w, h)))
         return a
 
     @classmethod
@@ -248,17 +257,18 @@ class RTSPClient:
 
     def process_data(self, data):
         self.logger.debug(f'client: process_data: len={len(data)}')
-        if 12 < len(data):
-            (tp, reqid, msec, length) = struct.unpack('>4sLLL', data[:16])
-            data = data[16:]
-            if len(data) == length:
-                i = 0
-                result = []
-                while i < len(data):
-                    (klass, conf, x, y, w, h) = struct.unpack('>BBhhhh', data[i:i+10])
-                    result.append((klass, conf, x, y, w, h))
-                    i += 10
-                self.logger.info(f'client: msec={msec}, reqid={reqid}, result={result}')
+        if len(data) < 16: return # invalid data
+        (tp, reqid, msec, length) = struct.unpack('>4sLLL', data[:16])
+        data = data[16:]
+        if len(data) != length: return # missing data
+        i = 0
+        result = []
+        while i < len(data):
+            (klass, conf, x, y, w, h) = struct.unpack(
+                '>BBhhhh', data[i:i+10])
+            result.append((klass, conf, x, y, w, h))
+            i += 10
+        self.logger.info(f'client: msec={msec}, reqid={reqid}, result={result}')
         return
 
 
@@ -342,21 +352,22 @@ class RTPHandler:
 
     def process_data(self, data):
         self.logger.debug(f'server: process_data: {len(data)}')
-        if 12 < len(data):
-            (tp, reqid, length) = struct.unpack('>4sLL', data[:12])
-            data = data[12:]
-            if len(data) == length:
-                if self.server.dbgout is not None:
-                    with open(self.server.dbgout, 'wb') as fp:
-                        fp.write(data)
-                t0 = time.time()
-                result = b''
-                for (klass, conf, x, y, w, h) in self.server.detector.perform(data):
-                    result += struct.pack(
-                        '>BBhhhh', klass, int(conf*255), int(x), int(y), int(w), int(h))
-                msec = int((time.time() - t0)*1000)
-                header = struct.pack('>4sLLL', b'YOLO', reqid, msec, len(result))
-                self.send(header+result)
+        if len(data) < 12: return # invalid data
+        (tp, reqid, length) = struct.unpack('>4sLL', data[:12])
+        data = data[12:]
+        if len(data) != length: return # missing data
+        if self.server.dbgout is not None:
+            with open(self.server.dbgout, 'wb') as fp:
+                fp.write(data)
+        t0 = time.time()
+        result = b''
+        for (klass, conf, x, y, w, h) in self.server.detector.perform(data):
+            result += struct.pack(
+                '>BBhhhh', klass, int(conf*255),
+                int(x), int(y), int(w), int(h))
+        msec = int((time.time() - t0)*1000)
+        header = struct.pack('>4sLLL', b'YOLO', reqid, msec, len(result))
+        self.send(header+result)
         return
 
 class RTSPHandler(socketserver.StreamRequestHandler):
