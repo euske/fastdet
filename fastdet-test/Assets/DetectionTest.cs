@@ -11,6 +11,7 @@ public class DetectionTest : MonoBehaviour
 
     private WebCamTexture _webcam;
     private IObjectDetector _detector;
+    private YLResult? _result = null;
 
     void Start()
     {
@@ -37,10 +38,31 @@ public class DetectionTest : MonoBehaviour
         _detector = null;
     }
 
+    void OnGUI()
+    {
+        if (_result != null) {
+            int width = Screen.width;
+            int height = Screen.height;
+            foreach (YLObject obj1 in _result.Value.Objects) {
+                Rect rect = new Rect(
+                    obj1.BBox.x*width,
+                    obj1.BBox.y*height,
+                    obj1.BBox.width*width,
+                    obj1.BBox.height*height);
+                Debug.Log("GUI:"+rect);
+                GUI.Box(rect, obj1.Label);
+            }
+        }
+    }
+
     void Update()
     {
         if (16 <= _webcam.width && 16 <= _webcam.height) {
             _detector.DetectImage(_webcam);
+        }
+        YLResult[] results = _detector.GetResults();
+        if (0 < results.Length) {
+            _result = results[0];
         }
     }
 }
