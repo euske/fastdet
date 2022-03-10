@@ -11,6 +11,12 @@ public struct YLObject {
     public string Label;               // Object label.
     public float Conf;                 // Confidence.
     public Rect BBox;                  // Bounding Box.
+
+    public override string ToString() {
+        return string.Format(
+            "<YLObject: Label={0}, Conf={1}, Rect={2}",
+            Label, Conf, BBox);
+    }
 }
 
 //  YLResult
@@ -21,6 +27,12 @@ public struct YLResult {
     public DateTime RecvTime;          // Timestamp (received).
     public float InferenceTime;        // Inference time (in second).
     public YLObject[] Objects;         // List of detected objects.
+
+    public override string ToString() {
+        return string.Format(
+            "<YLResult: RequestId={0}, SentTime={1}, RecvTime={2}, InferenceTime={3}, Objects={4}",
+            RequestId, SentTime, RecvTime, InferenceTime, string.Join(", ", Objects));
+    }
 }
 
 //  YLDetMode
