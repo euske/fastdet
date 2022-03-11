@@ -17,6 +17,16 @@ public struct YLObject {
             "<YLObject: Label={0}, Conf={1}, Rect={2}",
             Label, Conf, BBox);
     }
+
+    public float getIOU(YLObject obj) {
+        Rect bbox0 = this.BBox;
+        Rect bbox1 = obj.BBox;
+        float x = Mathf.Max(bbox0.x, bbox1.x);
+        float y = Mathf.Max(bbox0.y, bbox1.y);
+        float w = Mathf.Min(bbox0.x+bbox0.width, bbox1.x+bbox1.width) - x;
+        float h = Mathf.Min(bbox0.y+bbox0.height, bbox1.y+bbox1.height) - y;
+        return (w*h)/(bbox0.width*bbox0.height);
+    }
 }
 
 //  YLResult

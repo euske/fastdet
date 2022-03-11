@@ -3,12 +3,14 @@
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.Barracuda;
 using net.sss_consortium.fastdet;
 
 public class DetectionTest : MonoBehaviour
 {
     public RawImage rawImage = null;
     public string serverUrl = null;
+    public NNModel yoloModel = null;
 
     private WebCamTexture _webcam;
     private IObjectDetector _detector;
@@ -20,7 +22,10 @@ public class DetectionTest : MonoBehaviour
         _webcam.Play();
         rawImage.texture = _webcam;
 
-        _detector = new RemoteYOLODetector();
+        _detector = new RemoteYOLODetector(yoloModel);
+        if (yoloModel != null) {
+            _detector.Mode = YLDetMode.ClientOnly;
+        }
         if (serverUrl != null) {
             try {
                 _detector.Open(serverUrl);
@@ -65,9 +70,8 @@ public class DetectionTest : MonoBehaviour
         if (16 <= _webcam.width && 16 <= _webcam.height) {
             _detector.DetectImage(_webcam);
         }
-        YLResult[] results = _detector.GetResults();
-        if (0 < results.Length) {
-            _result = results[0];
+        foreach (YLResult result in _detector.GetResults()) {
+            _result = result;
         }
     }
 }
