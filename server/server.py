@@ -17,273 +17,7 @@ import socket
 import socketserver
 import struct
 import random
-from math import exp
-from datetime import datetime, timedelta
-
-def sigmoid(x):
-    return 1/(1+exp(-x))
-
-def argmax(a, key=lambda x:x):
-    (imax, vmax) = (None, None)
-    for (i,x) in enumerate(a):
-        v = key(x)
-        if vmax is None or vmax < v:
-            (imax, vmax) = (i, v)
-    if imax is None: raise ValueError(a)
-    return (imax, vmax)
-
-def rect_intersect(rect0, rect1):
-    (x0,y0,w0,h0) = rect0
-    (x1,y1,w1,h1) = rect1
-    x = max(x0, x1)
-    y = max(y0, y1)
-    w = min(x0+w0, x1+w1) - x
-    h = min(y0+h0, y1+h1) - y
-    return (x, y, w, h)
-
-
-##  YOLOObject
-##
-class YOLOObject:
-
-    def __init__(self, klass, conf, bbox):
-        self.klass = klass
-        self.conf = conf
-        self.bbox = bbox
-        return
-
-    def __repr__(self):
-        return (f'<YOLOObject({self.klass}): conf={self.conf:.3f}, bbox={self.bbox}>')
-
-    def get_iou(self, bbox):
-        (_,_,w,h) = rect_intersect(self.bbox, bbox)
-        if w <= 0 or h <= 0: return 0
-        (_,_,w0,h0) = self.bbox
-        return (w*h)/(w0*h0)
-
-# soft_nms: https://arxiv.org/abs/1704.04503
-def soft_nms(objs, threshold):
-    result = []
-    score = { obj:obj.conf for obj in objs }
-    while objs:
-        (i,conf) = argmax(objs, key=lambda obj:score[obj])
-        if conf < threshold: break
-        m = objs[i]
-        result.append(m)
-        del objs[i]
-        for obj in objs:
-            v = m.get_iou(obj.bbox)
-            score[obj] = score[obj] * exp(-3*v*v)
-    result.sort(key=lambda obj:score[obj], reverse=True)
-    return result
-
-
-##  Detector
-##
-class Detector:
-
-    IMAGE_SIZE = (416,416)
-    NUM_CLASS = 80
-
-class DummyDetector(Detector):
-
-    def perform(self, data):
-        (width, height) = self.IMAGE_SIZE
-        klass = 16              # cat
-        conf = 1.0
-        x = 0.5*width
-        y = 0.5*height
-        w = 0.4*width
-        h = 0.4*height
-        return [(klass, conf, x, y, w, h)]
-
-class ONNXDetector(Detector):
-
-    ANCHORS = {
-        # yolov3-full (3 outputs)
-        3: (((116, 90), (156, 198), (373, 326)),
-            ((30, 61), (62, 45), (59, 119)),
-            ((10, 13), (16, 30), (33, 23))
-            ),
-        # yolov3-tiny (2 outputs)
-        2: (((81, 82), (135, 169), (344, 319)),
-            ((10, 14), (23, 27), (37, 58)),
-            ),
-    }
-
-    def __init__(self, path, mode=None, threshold=0.3):
-        import onnxruntime as ort
-        providers = ['CPUExecutionProvider']
-        if mode == 'cuda':
-            providers.insert(0, 'CUDAExecutionProvider')
-        self.model = ort.InferenceSession(path, providers=providers)
-        self.threshold = threshold
-        self.logger = logging.getLogger()
-        self.logger.info(f'load: path={path}, providers={providers}')
-        return
-
-    def perform(self, data):
-        from PIL import Image
-        import numpy as np
-        (width, height) = self.IMAGE_SIZE
-        img = Image.open(io.BytesIO(data))
-        if img.size != self.IMAGE_SIZE:
-            raise ValueError('invalid image size')
-        a = (np.array(img).reshape(1,height,width,3)/255).astype(np.float32)
-        outputs = self.model.run(None, {'input': a})
-        aas = self.ANCHORS[len(outputs)]
-        objs = []
-        for (anchors,output) in zip(aas, outputs):
-            objs.extend(self.process_yolo(anchors, output[0]))
-        objs = soft_nms(objs, threshold=self.threshold)
-        results = [ (obj.klass, obj.conf,
-                     obj.bbox[0]*width, obj.bbox[1]*height,
-                     obj.bbox[2]*width, obj.bbox[3]*height) for obj in objs ]
-        self.logger.info(f'perform: results={results}')
-        return results
-
-    def process_yolo(self, anchors, m):
-        (width, height) = self.IMAGE_SIZE
-        (rows,cols,_) = m.shape
-        a = []
-        for (y0,row) in enumerate(m):
-            for (x0,col) in enumerate(row):
-                for (k,(ax,ay)) in enumerate(anchors):
-                    b = (5+self.NUM_CLASS) * k
-                    x = (x0 + sigmoid(col[b+0])) / cols
-                    y = (y0 + sigmoid(col[b+1])) / rows
-                    w = ax * exp(col[b+2]) / width
-                    h = ay * exp(col[b+3]) / height
-                    conf = sigmoid(col[b+4])
-                    mp = mi = None
-                    for i in range(self.NUM_CLASS):
-                        p = col[b+5+i]
-                        if mp is None or mp < p:
-                            (mp,mi) = (p,i)
-                    conf *= sigmoid(mp)
-                    a.append(YOLOObject(mi+1, conf, (x-w/2, y-h/2, w, h)))
-        return a
-
-    @classmethod
-    def test_detector(klass, path='./testdata/dog.jpg'):
-        detector = klass('./models/yolov3-tiny.onnx')
-        with open(path, 'rb') as fp:
-            data = fp.read()
-        print(detector.perform(data))
-        return
-
-
-##  RTSPClient
-##
-class RTSPClient:
-
-    BUFSIZ = 65536
-
-    def __init__(self, host, port, path='xxx'):
-        self.logger = logging.getLogger()
-        self.host = host
-        self.port = port
-        self.path = path
-        self.sock_rtp = None
-        self.sock_rtsp = None
-        self.session_id = None
-        self.rtp_port = None
-        return
-
-    def open(self):
-        self.sock_rtp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock_rtp.setblocking(False)
-        self.sock_rtp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock_rtp.bind(('', 0))
-        (_, lport) = self.sock_rtp.getsockname()
-        self.logger.info(f'open: lport={lport}, host={self.host}, port={self.port}, path={self.path}')
-        self.sock_rtsp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock_rtsp.connect((self.host, self.port))
-        self.logger.info(f'open: connected.')
-        req = f'DETECT {lport} {self.path}'
-        self.logger.debug(f'send: req={req!r}')
-        self.sock_rtsp.send(req.encode('ascii')+b'\r\n')
-        resp = self.sock_rtsp.recv(self.BUFSIZ)
-        self.logger.debug(f'recv: resp={resp!r}')
-        if resp.startswith(b'+OK '):
-            f = resp[4:].strip().split()
-            try:
-                self.rtp_port = int(f[0])
-                self.session_id = bytes.fromhex(f[1].decode('ascii'))
-            except (UnicodeError, ValueError):
-                raise
-        self.logger.info(f'open: rtp_port={self.rtp_port}, session_id={self.session_id.hex()}')
-        assert self.rtp_port is not None
-        # Send the dummy packet to initiate the stream.
-        data = b'\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-        self.sock_rtp.sendto(data, (self.host, self.rtp_port))
-        self.epoll = select.epoll()
-        self.epoll.register(self.sock_rtp.fileno(), select.POLLIN)
-        self._recv_buf = b''
-        self._recv_seqno = 0
-        self._send_seqno = 1
-        return
-
-    def send(self, data, chunk_size=32768):
-        i0 = 0
-        while i0 < len(data):
-            i1 = i0 + chunk_size
-            pt = 96
-            if len(data) <= i1:
-                pt |= 0x80
-            header = struct.pack('>BBH', 0x80, pt, self._send_seqno & 0xffff)
-            self._send_seqno += 1
-            segment = data[i0:i1]
-            self.sock_rtp.sendto(header+segment, (self.host, self.rtp_port))
-            i0 = i1
-        return
-
-    def idle(self, timeout=0):
-        # Poll RTP ports.
-        for (fd,event) in self.epoll.poll(timeout):
-            if fd == self.sock_rtp.fileno():
-                while True:
-                    try:
-                        (data, addr) = self.sock_rtp.recvfrom(self.BUFSIZ)
-                        self.process_rtp(data)
-                    except BlockingIOError:
-                        break
-        return
-
-    def process_rtp(self, data):
-        (flags,pt,seqno) = struct.unpack('>BBH', data[:4])
-        self.logger.debug(
-            f'process_rtp: flags={flags}, pt={pt}, seqno={seqno}')
-        if self._recv_seqno != seqno:
-            # Packet drop detected. Cancelling the current payload.
-            self.logger.info(f'process_rtp: DROP {seqno}/{self._recv_seqno}')
-            self._recv_buf = None
-        if (pt & 0x7f) == 96 and self._recv_buf is not None:
-            self._recv_buf += data[4:]
-        if pt & 0x80:
-            # Significant packet - ending the payload.
-            if self._recv_buf is not None:
-                self.process_data(self._recv_buf)
-            self._recv_buf = b''
-        self._recv_seqno = seqno+1
-        return
-
-    def process_data(self, data):
-        self.logger.debug(f'client: process_data: len={len(data)}')
-        if len(data) < 16: return # invalid data
-        (tp, reqid, msec, length) = struct.unpack('>4sLLL', data[:16])
-        data = data[16:]
-        if len(data) != length: return # missing data
-        i = 0
-        result = []
-        while i < len(data):
-            (klass, conf, x, y, w, h) = struct.unpack(
-                '>BBhhhh', data[i:i+10])
-            result.append((klass, conf, x, y, w, h))
-            i += 10
-        self.logger.info(f'client: msec={msec}, reqid={reqid}, result={result}')
-        return
-
+from detector import DummyDetector, ONNXDetector
 
 ##  RTPHandler
 ##
@@ -495,17 +229,15 @@ class RTSPServer(socketserver.TCPServer):
 def main(argv):
     import getopt
     def usage():
-        print(f'usage: {argv[0]} [-d] [-o dbgout] [-m mode] [-s port] [-c host:port]] [-i interval]')
+        print(f'usage: {argv[0]} [-d] [-o dbgout] [-m mode] [-s port] [-t interval] [args]')
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'do:m:s:c:i:')
+        (opts, args) = getopt.getopt(argv[1:], 'do:m:s:t:')
     except getopt.GetoptError:
         return usage()
     level = logging.INFO
     mode = None
     server_port = 10000
-    client_host = None
-    client_port = server_port
     interval = 0.1
     dbgout = None
     for (k, v) in opts:
@@ -513,44 +245,19 @@ def main(argv):
         elif k == '-o': dbgout = v
         elif k == '-m': mode = v
         elif k == '-s': server_port = int(v)
-        elif k == '-c':
-            (client_host,_,x) = v.partition(':')
-            if not client_host:
-                client_host = 'localhost'
-            if x:
-                client_port = int(x)
         elif k == '-t': interval = float(v)
     logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=level)
 
-    if client_host is not None:
-        # Client mode.
-        logging.info(f'connecting: {client_host}:{client_port}...')
-        client = RTSPClient(client_host, client_port)
-        client.open()
-        files = []
-        for path in args:
-            with open(path, 'rb') as fp:
-                files.append(fp.read())
-        reqid = 0
-        while True:
-            for data in files:
-                reqid += 1
-                header = struct.pack('>4sLL', b'JPEG', reqid, len(data))
-                client.send(header+data)
-                client.idle()
-                time.sleep(interval)
+    # Server mode.
+    if args:
+        detector = ONNXDetector(args[0], mode=mode)
     else:
-        # Server mode.
-        if args:
-            detector = ONNXDetector(args[0], mode=mode)
-        else:
-            detector = DummyDetector()
-        logging.info(f'listening: at {server_port}...')
-        RTSPServer.allow_reuse_address = True
-        timeout = 0.05
-        with RTSPServer(('', server_port), detector, dbgout=dbgout) as server:
-            server.serve_forever(timeout)
-
+        detector = DummyDetector()
+    logging.info(f'listening: at {server_port}...')
+    RTSPServer.allow_reuse_address = True
+    timeout = 0.05
+    with RTSPServer(('', server_port), detector, dbgout=dbgout) as server:
+        server.serve_forever(timeout)
     return 0
 
 if __name__ == '__main__': sys.exit(main(sys.argv))
