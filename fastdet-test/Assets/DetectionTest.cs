@@ -50,10 +50,15 @@ public class DetectionTest : MonoBehaviour
 
     void OnGUI()
     {
+        int width = Screen.width;
+        int height = Screen.height;
         if (_result != null) {
-            int width = Screen.width;
-            int height = Screen.height;
-            foreach (YLObject obj1 in _result.Value.Objects) {
+            YLResult result = _result.Value;
+            int total = (int)((result.RecvTime-result.SentTime).TotalSeconds*1000);
+            int infer = (int)(result.InferenceTime*1000);
+            string text = "Total: "+total+"ms, Inference: "+infer+"ms";
+            GUI.Label(new Rect(10,10,300,20), text);
+            foreach (YLObject obj1 in result.Objects) {
                 Rect rect = new Rect(
                     obj1.BBox.x*width,
                     obj1.BBox.y*height,
@@ -61,6 +66,21 @@ public class DetectionTest : MonoBehaviour
                     obj1.BBox.height*height);
                 Debug.Log("GUI:"+rect);
                 GUI.Box(rect, obj1.Label);
+            }
+        }
+        if (_detector != null) {
+            if (GUI.Button(new Rect(width-100,10,80,30), _detector.Mode.ToString())) {
+                switch (_detector.Mode) {
+                case YLDetMode.ClientOnly:
+                    _detector.Mode = YLDetMode.ServerOnly;
+                    break;
+                case YLDetMode.ServerOnly:
+                    _detector.Mode = YLDetMode.None;
+                    break;
+                default:
+                    _detector.Mode = YLDetMode.ClientOnly;
+                    break;
+                }
             }
         }
     }

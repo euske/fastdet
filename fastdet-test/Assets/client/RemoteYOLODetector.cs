@@ -294,8 +294,12 @@ public class RemoteYOLODetector : IObjectDetector {
     }
 
     private void performLocalDetection(uint requestId, Texture2D pixels, Rect clipRect) {
-        DateTime t0 = DateTime.Now;
+        if (_model == null) {
+            Debug.LogWarning("performLocalDetection: model not loaded.");
+            return;
+        }
 
+        DateTime t0 = DateTime.Now;
         var data = new TextureAsTensorData(pixels, 3);
         using (var tensor = new Tensor(data.shape, data)) {
             _worker.Execute(tensor);
@@ -376,7 +380,7 @@ public class RemoteYOLODetector : IObjectDetector {
             RequestId = requestId,
             SentTime = t0,
             RecvTime = t1,
-            InferenceTime = (t1 - t0).Seconds,
+            InferenceTime = (float)((t1 - t0).TotalSeconds),
             Objects = objs.ToArray(),
         };
         //logit("recvData: result1={0}", result1);
@@ -385,6 +389,11 @@ public class RemoteYOLODetector : IObjectDetector {
 
     private static byte[] JPEG_TYPE = { (byte)'J', (byte)'P', (byte)'E', (byte)'G' };
     private void requestRemoteDetection(uint requestId, Texture2D pixels, Rect clipRect) {
+        if (_udp == null) {
+            Debug.LogWarning("requestRemoteDetection: connection not open.");
+            return;
+        }
+
         Request request = new Request {
             SentTime = DateTime.Now, ClipRect = clipRect
         };
