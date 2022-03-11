@@ -48,10 +48,24 @@ public class RemoteYOLODetector : IObjectDetector {
 
     private const int IMAGE_SIZE_WIDTH = 416;
     private const int IMAGE_SIZE_HEIGHT = 416;
-    private static Vector2[] ANCHORS = new Vector2[] {
-        new Vector2(81f/32, 82f/32),
-        new Vector2(135f/32, 169f/32),
-        new Vector2(344f/32, 319f/32),
+    private static Vector2[] ANCHORS_FULL = new Vector2[] {
+        new Vector2(116, 90),
+        new Vector2(156, 198),
+        new Vector2(373, 326),
+        new Vector2(30, 61),
+        new Vector2(62, 45),
+        new Vector2(59, 119),
+        new Vector2(10, 13),
+        new Vector2(16, 30),
+        new Vector2(33, 23),
+    };
+    private static Vector2[] ANCHORS_TINY = new Vector2[] {
+        new Vector2(81, 82),
+        new Vector2(135, 169),
+        new Vector2(344, 319),
+        new Vector2(10, 14),
+        new Vector2(23, 27),
+        new Vector2(37, 58),
     };
     private static string[] LABELS = {
         // COCO dataset labels.
@@ -288,19 +302,21 @@ public class RemoteYOLODetector : IObjectDetector {
         }
 
         List<YLObject> cands = new List<YLObject>();
-        foreach (string name in _model.outputs) {
-            using (var t = _worker.PeekOutput(name)) {
+        List<string> outputs = _model.outputs;
+        Vector2[] anchors = (outputs.Count == 3)? ANCHORS_FULL : ANCHORS_TINY;
+        for (int z = 0; z < outputs.Count; z++) {
+            using (var t = _worker.PeekOutput(outputs[z])) {
                 int rows = t.shape.height;
                 int cols = t.shape.width;
                 for (int y0 = 0; y0 < rows; y0++) {
                     for (int x0 = 0; x0 < cols; x0++) {
-                        for (int k = 0; k < ANCHORS.Length; k++) {
-                            Vector2 anchor = ANCHORS[k];
+                        for (int k = 0; k < 3; k++) {
+                            Vector2 anchor = anchors[z*3+k];
                             int b = (5+LABELS.Length-1) * k;
                             float x = (x0 + Sigmoid(t[0,y0,x0,b+0])) / cols;
                             float y = (y0 + Sigmoid(t[0,y0,x0,b+1])) / rows;
-                            float w = (anchor.x * Mathf.Exp(t[0,y0,x0,b+2])) / cols;
-                            float h = (anchor.y * Mathf.Exp(t[0,y0,x0,b+3])) / rows;
+                            float w = (anchor.x * Mathf.Exp(t[0,y0,x0,b+2])) / IMAGE_SIZE_WIDTH;
+                            float h = (anchor.y * Mathf.Exp(t[0,y0,x0,b+3])) / IMAGE_SIZE_HEIGHT;
                             float conf = Sigmoid(t[0,y0,x0,b+4]);
                             float maxProb = -1;
                             int maxIndex = 0;
@@ -316,8 +332,8 @@ public class RemoteYOLODetector : IObjectDetector {
                                 Label = LABELS[maxIndex],
                                 Conf = score,
                                 BBox = new Rect(
-                                    clipRect.x+x*clipRect.width,
-                                    clipRect.y+y*clipRect.height,
+                                    clipRect.x+(x-w/2)*clipRect.width,
+                                    clipRect.y+(y-h/2)*clipRect.height,
                                     w*clipRect.width,
                                     h*clipRect.height),
                             };
