@@ -1,0 +1,7 @@
+.*
+*~
+*.pyc
+*.pyo
+*.onnx
+tmp
+__pycache__
