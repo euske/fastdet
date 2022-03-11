@@ -285,13 +285,13 @@ class RTSPClient:
         return
 
 
-##  RTSPServer
+##  RTPHandler
 ##
 class RTPHandler:
 
     BUFSIZ = 65536
 
-    def __init__(self, server, sock_rtp, rtp_host, rtp_port, session_id, timeout=3):
+    def __init__(self, server, sock_rtp, rtp_host, rtp_port, session_id, timeout=10):
         self.logger = logging.getLogger(session_id.hex())
         self.server = server
         self.sock_rtp = sock_rtp
@@ -302,6 +302,7 @@ class RTPHandler:
         self._recv_buf = b''
         self._recv_seqno = 0
         self._send_seqno = 0
+        self._active = 0
         return
 
     def __repr__(self):
@@ -312,6 +313,7 @@ class RTPHandler:
         data = b'\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
         self.sock_rtp.sendto(data, (self.rtp_host, self.rtp_port))
         self._send_seqno += 1
+        self._active = time.time()
         return
 
     def close(self):
@@ -319,7 +321,10 @@ class RTPHandler:
         self.logger.info(f'close')
         self.sock_rtp.close()
         self.sock_rtp = None
-        return
+        return False
+
+    def is_alive(self, t):
+        return (t < self._active+self.timeout)
 
     def send(self, data, chunk_size=32768):
         i0 = 0
@@ -361,6 +366,7 @@ class RTPHandler:
                 self.process_data(self._recv_buf)
             self._recv_buf = b''
         self._recv_seqno = seqno+1
+        self._active = time.time()
         return
 
     def process_data(self, data):
@@ -383,6 +389,8 @@ class RTPHandler:
         self.send(header+result)
         return
 
+##  RTSPServer
+##
 class RTSPHandler(socketserver.StreamRequestHandler):
 
     def setup(self):
@@ -457,28 +465,27 @@ class RTSPServer(socketserver.TCPServer):
 
     def service_actions(self):
         super().service_actions()
-        timestamp = time.time()
         for (fd,event) in self.epoll.poll(0):
             if fd in self.handlers:
-                (_,handler) = self.handlers[fd]
+                handler = self.handlers[fd]
                 handler.idle()
-                self.handlers[fd] = (timestamp, handler)
-        for (fd,(t,handler)) in list(self.handlers.items()):
-            if t + handler.timeout < timestamp:
+        t = time.time()
+        for (fd,handler) in list(self.handlers.items()):
+            if not handler.is_alive(t):
                 self.unregister(fd)
         return
 
     def register(self, fd, handler):
         self.logger.info(f'register: fd={fd}, handler={handler}')
         self.epoll.register(fd, select.POLLIN)
-        self.handlers[fd] = (time.time(), handler)
+        self.handlers[fd] = handler
         return
 
     def unregister(self, fd):
         assert fd in self.handlers
         self.logger.info(f'unregister: fd={fd}')
         self.epoll.unregister(fd)
-        (_, handler) = self.handlers[fd]
+        handler = self.handlers[fd]
         handler.close()
         del self.handlers[fd]
         return
