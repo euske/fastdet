@@ -99,7 +99,17 @@ class DummyDetector(Detector):
 
 class ONNXDetector(Detector):
 
-    ANCHORS = ((81/32, 82/32), (135/32,169/32), (344/32,319/32))
+    ANCHORS = {
+        # yolov3-full (3 outputs)
+        3: (((116, 90), (156, 198), (373, 326)),
+            ((30, 61), (62, 45), (59, 119)),
+            ((10, 13), (16, 30), (33, 23))
+            ),
+        # yolov3-tiny (2 outputs)
+        2: (((81, 82), (135, 169), (344, 319)),
+            ((10, 14), (23, 27), (37, 58)),
+            ),
+    }
 
     def __init__(self, path, mode=None, threshold=0.3):
         import onnxruntime as ort
@@ -120,9 +130,11 @@ class ONNXDetector(Detector):
         if img.size != self.IMAGE_SIZE:
             raise ValueError('invalid image size')
         a = (np.array(img).reshape(1,height,width,3)/255).astype(np.float32)
+        outputs = self.model.run(None, {'input': a})
+        aas = self.ANCHORS[len(outputs)]
         objs = []
-        for output in self.model.run(None, {'input': a}):
-            objs.extend(self.process_yolo(output[0]))
+        for (anchors,output) in zip(aas, outputs):
+            objs.extend(self.process_yolo(anchors, output[0]))
         objs = soft_nms(objs, threshold=self.threshold)
         results = [ (obj.klass, obj.conf,
                      obj.bbox[0]*width, obj.bbox[1]*height,
@@ -130,17 +142,18 @@ class ONNXDetector(Detector):
         self.logger.info(f'perform: results={results}')
         return results
 
-    def process_yolo(self, m):
+    def process_yolo(self, anchors, m):
+        (width, height) = self.IMAGE_SIZE
         (rows,cols,_) = m.shape
         a = []
         for (y0,row) in enumerate(m):
             for (x0,col) in enumerate(row):
-                for (k,(ax,ay)) in enumerate(self.ANCHORS):
+                for (k,(ax,ay)) in enumerate(anchors):
                     b = (5+self.NUM_CLASS) * k
                     x = (x0 + sigmoid(col[b+0])) / cols
                     y = (y0 + sigmoid(col[b+1])) / rows
-                    w = ax * exp(col[b+2]) / cols
-                    h = ay * exp(col[b+3]) / rows
+                    w = ax * exp(col[b+2]) / width
+                    h = ay * exp(col[b+3]) / height
                     conf = sigmoid(col[b+4])
                     mp = mi = None
                     for i in range(self.NUM_CLASS):
@@ -148,7 +161,7 @@ class ONNXDetector(Detector):
                         if mp is None or mp < p:
                             (mp,mi) = (p,i)
                     conf *= sigmoid(mp)
-                    a.append(YOLOObject(mi+1, conf, (x, y, w, h)))
+                    a.append(YOLOObject(mi+1, conf, (x-w/2, y-h/2, w, h)))
         return a
 
     @classmethod
