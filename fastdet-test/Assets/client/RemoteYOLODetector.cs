@@ -14,6 +14,11 @@ namespace net.sss_consortium.fastdet {
 
 public class RemoteYOLODetector : IObjectDetector {
 
+    internal struct Request {
+        public DateTime SentTime;
+        public Rect ClipRect;
+    };
+
     // Detection mode.
     public YLDetMode Mode { get; set; }
     // Detection threshold.
@@ -21,16 +26,16 @@ public class RemoteYOLODetector : IObjectDetector {
 
     private RenderTexture _buffer;
     private Texture2D _pixels;
+    private uint _requestId;
+    private List<YLResult> _results;
+
     private TcpClient _tcp;
     private UdpClient _udp;
     private byte[] _session_id;
     private MemoryStream _recv_buf;
     private uint _recv_seqno;
     private uint _send_seqno;
-
-    private uint _requestId = 0;
-    private Dictionary<uint, DateTime> _sent = new Dictionary<uint, DateTime>();
-    private List<YLResult> _results = new List<YLResult>();
+    private Dictionary<uint, Request> _requests;
 
     private static byte[] RTP_DUMMY_PACKET = {
         0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -128,40 +133,8 @@ public class RemoteYOLODetector : IObjectDetector {
     public RemoteYOLODetector() {
         _buffer = new RenderTexture(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, 0);
         _pixels = new Texture2D(_buffer.width, _buffer.height);
-    }
-
-    private static void logit(string fmt, params object[] args) {
-        Debug.Log(string.Format(fmt, args));
-    }
-
-    private static void writeBytes(MemoryStream s, byte[] b) {
-        s.Write(b, 0, b.Length);
-    }
-
-    private static void writeUInt16(MemoryStream s, uint v) {
-        s.WriteByte((byte)((v >> 8) & 0xff));
-        s.WriteByte((byte)((v >> 0) & 0xff));
-    }
-
-    private static void writeUInt32(MemoryStream s, uint v) {
-        s.WriteByte((byte)((v >> 24) & 0xff));
-        s.WriteByte((byte)((v >> 16) & 0xff));
-        s.WriteByte((byte)((v >> 8) & 0xff));
-        s.WriteByte((byte)((v >> 0) & 0xff));
-    }
-
-    private static int parseInt16(byte[] b, uint i) {
-        int v = (b[i] << 8) | b[i+1];
-        return (v < 32768)? v : (v-32768);
-    }
-
-    private static uint parseUInt16(byte[] b, uint i) {
-        return ( ((uint)b[i] << 8) | ((uint)b[i+1]) );
-    }
-
-    private static uint parseUInt32(byte[] b, uint i) {
-        return ( ((uint)b[i] << 24) | ((uint)b[i+1] << 16) |
-                 ((uint)b[i+2] << 8) | ((uint)b[i+3]) );
+        _requestId = 0;
+        _results = new List<YLResult>();
     }
 
     // Initializes the endpoint connection.
@@ -219,12 +192,151 @@ public class RemoteYOLODetector : IObjectDetector {
         }
         _udp.Connect(addr, rtp_port);
 
-        // Send the dummy packet to initiate the stream.
-        _udp.Send(RTP_DUMMY_PACKET, RTP_DUMMY_PACKET.Length);
+        // Initialize the internal states.
         _recv_buf = null;
         _recv_seqno = 0;
         _send_seqno = 1;
+        _requests = new Dictionary<uint, Request>();
+
+        // Send the dummy packet to initiate the stream.
+        _udp.Send(RTP_DUMMY_PACKET, RTP_DUMMY_PACKET.Length);
         _udp.BeginReceive(new AsyncCallback(onRecvRTP), _udp);
+    }
+
+    // Uninitializes the endpoint connection.
+    public void Dispose() {
+        if (_udp != null) {
+            _udp.Close();
+            _udp.Dispose();
+            _udp = null;
+        }
+        if (_tcp != null) {
+            _tcp.Close();
+            _tcp.Dispose();
+            _tcp = null;
+        }
+        if (_buffer != null) {
+            UnityEngine.Object.Destroy(_buffer);
+            _buffer = null;
+        }
+        if (_pixels != null) {
+            UnityEngine.Object.Destroy(_pixels);
+            _pixels = null;
+        }
+        logit("Dispose");
+    }
+
+    // Sends the image to the queue and returns the request id;
+    public uint DetectImage(Texture image) {
+        Rect clipRect;
+        if (image.width < image.height) {
+            float ratio = (float)image.width/image.height;
+            clipRect = new Rect(0, (1-ratio)/2, 1, ratio);
+        } else {
+            float ratio = (float)image.height/image.width;
+            clipRect = new Rect((1-ratio)/2, 0, ratio, 1);
+        }
+        return DetectImage(image, clipRect);
+    }
+
+    public uint DetectImage(Texture image, Rect clipRect) {
+        // Resize the texture.
+        Graphics.Blit(image, _buffer, clipRect.size, clipRect.position);
+        // Convert the texture.
+        RenderTexture temp = RenderTexture.active;
+        RenderTexture.active = _buffer;
+        _pixels.ReadPixels(new Rect(0, 0, _buffer.width, _buffer.height), 0, 0);
+        _pixels.Apply();
+        RenderTexture.active = temp;
+        _requestId++;
+        switch (Mode) {
+        case YLDetMode.ClientOnly:
+            performLocalDetection(_requestId, _pixels, clipRect);
+            break;
+        case YLDetMode.ServerOnly:
+            requestRemoteDetection(_requestId, _pixels, clipRect);
+            break;
+        default:
+            addDummyResult(_requestId);
+            break;
+        }
+        return _requestId;
+    }
+
+    private void performLocalDetection(uint requestId, Texture2D pixels, Rect clipRect) {
+        var data = new TextureAsTensorData(pixels, 3);
+    }
+
+    private static byte[] JPEG_TYPE = { (byte)'J', (byte)'P', (byte)'E', (byte)'G' };
+    private void requestRemoteDetection(uint requestId, Texture2D pixels, Rect clipRect) {
+        Request request = new Request();
+        request.SentTime = DateTime.Now;
+        request.ClipRect = clipRect;
+        _requests.Add(requestId, request);
+        byte[] data = pixels.EncodeToJPG();
+        using (MemoryStream buf = new MemoryStream()) {
+            writeBytes(buf, JPEG_TYPE);
+            writeUInt32(buf, requestId);
+            writeUInt32(buf, (uint)data.Length);
+            writeBytes(buf, data);
+            sendRTP(buf.ToArray());
+        }
+    }
+
+    private void addDummyResult(uint requestId) {
+        YLObject obj1 = new YLObject();
+        obj1.Label = "cat";
+        obj1.Conf = 1.0f;
+        obj1.BBox = new Rect(0.5f, 0.5f, 0.4f, 0.4f);
+        YLResult result1 = new YLResult();
+        result1.RequestId = requestId;
+        result1.SentTime = DateTime.Now;
+        result1.RecvTime = DateTime.Now;
+        result1.InferenceTime = 0;
+        result1.Objects = new YLObject[] { obj1 };
+        _results.Add(result1);
+    }
+
+    // Gets the results (if any).
+    public YLResult[] GetResults() {
+        // TODO: remove timeout keys from _requests.
+        YLResult[] results = _results.ToArray();
+        _results.Clear();
+        return results;
+    }
+
+    private static void logit(string fmt, params object[] args) {
+        Debug.Log(string.Format(fmt, args));
+    }
+
+    private static void writeBytes(MemoryStream s, byte[] b) {
+        s.Write(b, 0, b.Length);
+    }
+
+    private static void writeUInt16(MemoryStream s, uint v) {
+        s.WriteByte((byte)((v >> 8) & 0xff));
+        s.WriteByte((byte)((v >> 0) & 0xff));
+    }
+
+    private static void writeUInt32(MemoryStream s, uint v) {
+        s.WriteByte((byte)((v >> 24) & 0xff));
+        s.WriteByte((byte)((v >> 16) & 0xff));
+        s.WriteByte((byte)((v >> 8) & 0xff));
+        s.WriteByte((byte)((v >> 0) & 0xff));
+    }
+
+    private static int parseInt16(byte[] b, uint i) {
+        int v = (b[i] << 8) | b[i+1];
+        return (v < 32768)? v : (v-32768);
+    }
+
+    private static uint parseUInt16(byte[] b, uint i) {
+        return ( ((uint)b[i] << 8) | ((uint)b[i+1]) );
+    }
+
+    private static uint parseUInt32(byte[] b, uint i) {
+        return ( ((uint)b[i] << 24) | ((uint)b[i+1] << 16) |
+                 ((uint)b[i+2] << 8) | ((uint)b[i+3]) );
     }
 
     private const int CHUNK_SIZE = 32768;
@@ -288,7 +400,10 @@ public class RemoteYOLODetector : IObjectDetector {
         if (data[0] == 'Y' && data[1] == 'O' && data[2] == 'L' && data[3] == 'O') {
             // Parse results.
             uint requestId = parseUInt32(data, 4);
-            if (!_sent.ContainsKey(requestId)) return;
+            if (!_requests.ContainsKey(requestId)) return;
+            Request request = _requests[requestId];
+            _requests.Remove(requestId);
+            Rect clip = request.ClipRect;
             uint msec = parseUInt32(data, 8);
             uint length = parseUInt32(data, 12);
             List<YLObject> objs = new List<YLObject>();
@@ -306,119 +421,21 @@ public class RemoteYOLODetector : IObjectDetector {
                 obj1.Label = LABELS[klass];
                 obj1.Conf = conf / 255f;
                 obj1.BBox = new Rect(
-                    x/IMAGE_SIZE_WIDTH, y/IMAGE_SIZE_HEIGHT,
-                    w/IMAGE_SIZE_WIDTH, h/IMAGE_SIZE_HEIGHT);
+                    clip.x+(x/IMAGE_SIZE_WIDTH)*clip.width,
+                    clip.y+(y/IMAGE_SIZE_HEIGHT)*clip.height,
+                    (w/IMAGE_SIZE_WIDTH)*clip.width,
+                    (h/IMAGE_SIZE_HEIGHT)*clip.height);
                 objs.Add(obj1);
             }
             YLResult result1 = new YLResult();
             result1.RequestId = requestId;
-            result1.SentTime = _sent[requestId];
+            result1.SentTime = request.SentTime;
             result1.RecvTime = DateTime.Now;
             result1.InferenceTime = msec / 1000f;
             result1.Objects = objs.ToArray();
-            logit("recvData: result1={0}", result1);
-            _sent.Remove(requestId);
+            //logit("recvData: result1={0}", result1);
             _results.Add(result1);
         }
-    }
-
-    // Uninitializes the endpoint connection.
-    public void Dispose() {
-        if (_buffer != null) {
-            UnityEngine.Object.Destroy(_buffer);
-            _buffer = null;
-        }
-        if (_pixels != null) {
-            UnityEngine.Object.Destroy(_pixels);
-            _pixels = null;
-        }
-        if (_tcp != null) {
-            _tcp.Close();
-            _tcp.Dispose();
-            _tcp = null;
-        }
-        if (_udp != null) {
-            _udp.Close();
-            _udp.Dispose();
-            _udp = null;
-        }
-        logit("Dispose");
-    }
-
-    // Sends the image to the queue and returns the request id;
-    public uint DetectImage(Texture image) {
-        Rect bounds;
-        if (image.width < image.height) {
-            float ratio = (float)image.width/image.height;
-            bounds = new Rect(0, (1-ratio)/2, 1, ratio);
-        } else {
-            float ratio = (float)image.height/image.width;
-            bounds = new Rect((1-ratio)/2, 0, ratio, 1);
-        }
-        return DetectImage(image, bounds);
-    }
-
-    public uint DetectImage(Texture image, Rect rect) {
-        // Resize the texture.
-        Graphics.Blit(image, _buffer, rect.size, rect.position);
-        // Convert the texture.
-        RenderTexture temp = RenderTexture.active;
-        RenderTexture.active = _buffer;
-        _pixels.ReadPixels(new Rect(0, 0, _buffer.width, _buffer.height), 0, 0);
-        _pixels.Apply();
-        RenderTexture.active = temp;
-        _requestId++;
-        switch (Mode) {
-        case YLDetMode.ClientOnly:
-            performLocalDetection(_requestId, _pixels);
-            break;
-        case YLDetMode.ServerOnly:
-            requestRemoteDetection(_requestId, _pixels);
-            break;
-        default:
-            addDummyResult(_requestId);
-            break;
-        }
-        return _requestId;
-    }
-
-    private void performLocalDetection(uint requestId, Texture2D pixels) {
-        var data = new TextureAsTensorData(pixels, 3);
-    }
-
-    private static byte[] JPEG_TYPE = { (byte)'J', (byte)'P', (byte)'E', (byte)'G' };
-    private void requestRemoteDetection(uint requestId, Texture2D pixels) {
-        _sent.Add(requestId, DateTime.Now);
-        byte[] data = pixels.EncodeToJPG();
-        using (MemoryStream buf = new MemoryStream()) {
-            writeBytes(buf, JPEG_TYPE);
-            writeUInt32(buf, requestId);
-            writeUInt32(buf, (uint)data.Length);
-            writeBytes(buf, data);
-            sendRTP(buf.ToArray());
-        }
-    }
-
-    private void addDummyResult(uint requestId) {
-        YLObject obj1 = new YLObject();
-        obj1.Label = "cat";
-        obj1.Conf = 1.0f;
-        obj1.BBox = new Rect(0.5f, 0.5f, 0.4f, 0.4f);
-        YLResult result1 = new YLResult();
-        result1.RequestId = requestId;
-        result1.SentTime = DateTime.Now;
-        result1.RecvTime = DateTime.Now;
-        result1.InferenceTime = 0;
-        result1.Objects = new YLObject[] { obj1 };
-        _results.Add(result1);
-    }
-
-    // Gets the results (if any).
-    public YLResult[] GetResults() {
-        // TODO: remove timeout keys from _sent.
-        YLResult[] results = _results.ToArray();
-        _results.Clear();
-        return results;
     }
 }
 
