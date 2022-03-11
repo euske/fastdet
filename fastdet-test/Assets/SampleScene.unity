@@ -310,3 +310,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   rawImage: {fileID: 218734108}
   serverUrl: rtsp://192.168.1.10:10000/detect
+  yoloModel: {fileID: 5022602860645237092, guid: 46dd82772bf0224408c2b5bfeffa2ee3, type: 3}
