@@ -1,5 +1,6 @@
 //  DetectionTest.cs
 //
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using net.sss_consortium.fastdet;
@@ -17,13 +18,17 @@ public class DetectionTest : MonoBehaviour
     {
         _webcam = new WebCamTexture();
         _webcam.Play();
+        rawImage.texture = _webcam;
+
         _detector = new RemoteYOLODetector();
         if (serverUrl != null) {
-            _detector.Open(serverUrl);
-            _detector.Mode = YLDetMode.ServerOnly;
+            try {
+                _detector.Open(serverUrl);
+                _detector.Mode = YLDetMode.ServerOnly;
+            } catch (Exception e) {
+                Debug.LogWarning("connection error: "+e);
+            }
         }
-
-        rawImage.texture = _webcam;
     }
 
     void OnDisable()
