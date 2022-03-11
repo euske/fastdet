@@ -136,7 +136,7 @@ class ONNXDetector(Detector):
         for (y0,row) in enumerate(m):
             for (x0,col) in enumerate(row):
                 for (k,(ax,ay)) in enumerate(self.ANCHORS):
-                    b = k*(5+self.NUM_CLASS)
+                    b = (5+self.NUM_CLASS) * k
                     x = (x0 + sigmoid(col[b+0])) / cols
                     y = (y0 + sigmoid(col[b+1])) / rows
                     w = ax * exp(col[b+2]) / cols
@@ -152,9 +152,9 @@ class ONNXDetector(Detector):
         return a
 
     @classmethod
-    def test_detector(klass):
+    def test_detector(klass, path='./testdata/dog.jpg'):
         detector = klass('./models/yolov3-tiny.onnx')
-        with open('./testdata/dog.jpg', 'rb') as fp:
+        with open(path, 'rb') as fp:
             data = fp.read()
         print(detector.perform(data))
         return
