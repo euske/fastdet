@@ -470,7 +470,7 @@ public class RemoteYOLODetector : IObjectDetector {
                  ((uint)b[i+2] << 8) | ((uint)b[i+3]) );
     }
 
-    private const int CHUNK_SIZE = 32768;
+    private const int CHUNK_SIZE = 40000;
     private void sendRTP(byte[] data) {
         if (_udp == null) return;
         int i0 = 0;
