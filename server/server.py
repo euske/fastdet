@@ -5,7 +5,7 @@
 import sys
 import logging
 import time
-import select
+import selectors
 import socket
 import struct
 import random
@@ -144,14 +144,13 @@ class EventLoop:
 
     def __init__(self):
         self.logger = logging.getLogger()
-        self.poll = select.epoll()
+        self.selector = selectors.DefaultSelector()
         self.handlers = {}
         return
 
     def add(self, handler):
-        fd = handler.sock.fileno()
+        fd = self.selector.register(handler.sock, selectors.EVENT_READ)
         assert fd not in self.handlers
-        self.poll.register(fd, select.EPOLLIN)
         self.handlers[fd] = handler
         self.logger.info(f'added: {handler}')
         handler.loop = self
@@ -159,8 +158,8 @@ class EventLoop:
 
     def run(self, interval=0.1):
         while True:
-            for (fd, ev) in self.poll.poll(interval):
-                if ev & select.EPOLLIN and fd in self.handlers:
+            for (fd, ev) in self.selector.select(interval):
+                if ev & selectors.EVENT_READ and fd in self.handlers:
                     handler = self.handlers[fd]
                     handler.action(ev)
             self.idle()
@@ -172,7 +171,7 @@ class EventLoop:
             if not handler.idle():
                 removed.append((fd, handler))
         for (fd, handler) in removed:
-            self.poll.unregister(fd)
+            self.selector.unregister(handler.sock)
             del self.handlers[fd]
             self.logger.info(f'removed: {handler}')
             handler.close()
