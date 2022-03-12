@@ -1,34 +1,191 @@
 #!/usr/bin/env python
 ##
-##  server.py - server and test client.
-##  - RFC 7826 (RTSP)
-##  - RFC 3550 (RTP)
-##  - RFC 2435 (RTP JPEG)
-##
 ##  server$ python server.py -s 10000
-##  client$ python server.py -c :10000
 ##
-import io
 import sys
 import logging
 import time
 import select
 import socket
-import socketserver
 import struct
 import random
 from detector import DummyDetector, ONNXDetector
 
-##  RTPHandler
+
+##  SocketHandler
 ##
-class RTPHandler:
+class SocketHandler:
 
-    BUFSIZ = 65536
+    def __init__(self, sock):
+        self.logger = logging.getLogger()
+        self.sock = sock
+        self.loop = None
+        return
 
-    def __init__(self, server, sock_rtp, rtp_host, rtp_port, session_id, timeout=10):
-        self.logger = logging.getLogger(session_id.hex())
+    def idle(self):
+        return True
+
+    def action(self, ev):
+        return
+
+    def close(self):
+        self.sock.close()
+        self.sock = None
+        self.loop = None
+        self.logger.info(f'closed: {self}')
+        return
+
+
+##  TCPService
+##
+class TCPService(SocketHandler):
+
+    BUFSIZ = 65535
+
+    def __init__(self, server, sock):
+        super().__init__(sock)
         self.server = server
-        self.sock_rtp = sock_rtp
+        self.addr = self.sock.getsockname()
+        self.alive = True
+        self.buf = b''
+        return
+
+    def __repr__(self):
+        return f'<TCPService: addr={self.addr}>'
+
+    def idle(self):
+        return self.alive
+
+    def action(self, ev):
+        data = self.sock.recv(self.BUFSIZ)
+        if data:
+            i0 = 0
+            while i0 < len(data):
+                i1 = data.find(b'\n', i0)
+                if i1 < 0:
+                    self.buf += data[i0:]
+                    break
+                self.buf += data[i0:i1+1]
+                self.feedline(self.buf)
+                self.buf = b''
+                i0 = i1+1
+        else:
+            if self.buf:
+                self.feedline(self.buf)
+            self.alive = False
+        return
+
+    def feedline(self, line):
+        return
+
+
+##  UDPService
+##
+class UDPService(SocketHandler):
+
+    BUFSIZ = 65535
+
+    def __init__(self, server, sock, timeout=10):
+        super().__init__(sock)
+        self.server = server
+        self.timeout = timeout
+        self.addr = self.sock.getsockname()
+        self.active = time.time()
+        return
+
+    def __repr__(self):
+        return f'<UDPService: addr={self.addr}>'
+
+    def idle(self):
+        return time.time() < (self.active + self.timeout)
+
+    def action(self, ev):
+        (data, addr) = self.sock.recvfrom(self.BUFSIZ)
+        if data:
+            self.recvdata(data, addr)
+            self.active = time.time()
+        return
+
+    def recvdata(self, data, addr):
+        return
+
+
+##  TCPServer
+##
+class TCPServer(SocketHandler):
+
+    def __init__(self, port):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('', port))
+        sock.listen(1)
+        super().__init__(sock)
+        self.port = port
+        self.logger.info(f'listening: port={port}...')
+        return
+
+    def __repr__(self):
+        return f'<TCPServer: port={self.port}>'
+
+    def action(self, ev):
+        (conn, addr) = self.sock.accept()
+        self.logger.info(f'accept: {addr}')
+        self.loop.add(self.get_service(conn))
+        return
+
+    def get_service(self, conn):
+        return TCPService(self, conn)
+
+
+##  EventLoop
+##
+class EventLoop:
+
+    def __init__(self):
+        self.logger = logging.getLogger()
+        self.poll = select.epoll()
+        self.handlers = {}
+        return
+
+    def add(self, handler):
+        fd = handler.sock.fileno()
+        assert fd not in self.handlers
+        self.poll.register(fd, select.EPOLLIN)
+        self.handlers[fd] = handler
+        self.logger.info(f'added: {handler}')
+        handler.loop = self
+        return
+
+    def run(self, interval=0.1):
+        while True:
+            for (fd, ev) in self.poll.poll(interval):
+                if ev & select.EPOLLIN and fd in self.handlers:
+                    handler = self.handlers[fd]
+                    handler.action(ev)
+            self.idle()
+        return
+
+    def idle(self):
+        removed = []
+        for (fd, handler) in self.handlers.items():
+            if not handler.idle():
+                removed.append((fd, handler))
+        for (fd, handler) in removed:
+            self.poll.unregister(fd)
+            del self.handlers[fd]
+            self.logger.info(f'removed: {handler}')
+            handler.close()
+        return
+
+
+##  RTPService
+##
+class RTPService(UDPService):
+
+    CHUNK_SIZE = 40000
+
+    def __init__(self, server, sock, rtp_host, rtp_port, session_id, timeout=10):
+        super().__init__(server, sock)
         self.rtp_host = rtp_host
         self.rtp_port = rtp_port
         self.session_id = session_id
@@ -36,61 +193,27 @@ class RTPHandler:
         self._recv_buf = b''
         self._recv_seqno = 0
         self._send_seqno = 0
-        self._active = 0
         return
 
     def __repr__(self):
-        return f'<RTPHandler: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>'
+        return f'<RTPService: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>'
 
-    def open(self):
-        self.logger.info(f'open: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>')
+    def init(self):
+        self.logger.info(f'init: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>')
         data = b'\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-        self.sock_rtp.sendto(data, (self.rtp_host, self.rtp_port))
+        self.sock.sendto(data, (self.rtp_host, self.rtp_port))
         self._send_seqno += 1
         self._active = time.time()
         return
 
-    def close(self):
-        assert self.sock_rtp is not None
-        self.logger.info(f'close')
-        self.sock_rtp.close()
-        self.sock_rtp = None
-        return False
-
-    def is_alive(self, t):
-        return (t < self._active+self.timeout)
-
-    def send(self, data, chunk_size=32768):
-        i0 = 0
-        while i0 < len(data):
-            i1 = i0 + chunk_size
-            pt = 96
-            if len(data) <= i1:
-                pt |= 0x80
-            header = struct.pack('>BBH', 0x80, pt, self._send_seqno & 0xffff)
-            self._send_seqno += 1
-            segment = data[i0:i1]
-            self.sock_rtp.sendto(header+segment, (self.rtp_host, self.rtp_port))
-            i0 = i1
-        return
-
-    def idle(self):
-        assert self.sock_rtp is not None
-        while True:
-            try:
-                (data, addr) = self.sock_rtp.recvfrom(self.BUFSIZ)
-                self.process_rtp(data)
-            except BlockingIOError:
-                break
-        return
-
-    def process_rtp(self, data):
+    def recvdata(self, data, addr):
+        if addr != (self.rtp_host, self.rtp_port): return
         (flags,pt,seqno) = struct.unpack('>BBH', data[:4])
         self.logger.debug(
-            f'process_rtp: flags={flags}, pt={pt}, seqno={seqno}')
+            f'recv: flags={flags}, pt={pt}, seqno={seqno}')
         if self._recv_seqno != seqno:
             # Packet drop detected. Cancelling the current payload.
-            self.logger.info(f'process_rtp: DROP {seqno}/{self._recv_seqno}')
+            self.logger.info(f'recv: DROP {seqno}/{self._recv_seqno}')
             self._recv_buf = None
         if (pt & 0x7f) == 96 and self._recv_buf is not None:
             self._recv_buf += data[4:]
@@ -100,11 +223,10 @@ class RTPHandler:
                 self.process_data(self._recv_buf)
             self._recv_buf = b''
         self._recv_seqno = seqno+1
-        self._active = time.time()
         return
 
     def process_data(self, data):
-        self.logger.debug(f'server: process_data: {len(data)}')
+        self.logger.debug(f'process_data: {len(data)}')
         if len(data) < 12: return # invalid data
         (tp, reqid, length) = struct.unpack('>4sLL', data[:12])
         data = data[12:]
@@ -123,36 +245,32 @@ class RTPHandler:
         self.send(header+result)
         return
 
-##  RTSPServer
+    def send(self, data, chunk_size=CHUNK_SIZE):
+        i0 = 0
+        while i0 < len(data):
+            i1 = i0 + chunk_size
+            pt = 96
+            if len(data) <= i1:
+                pt |= 0x80
+            header = struct.pack('>BBH', 0x80, pt, self._send_seqno & 0xffff)
+            self._send_seqno += 1
+            segment = data[i0:i1]
+            self.sock.sendto(header+segment, (self.rtp_host, self.rtp_port))
+            i0 = i1
+        return
+
+##  RTSPService
 ##
-class RTSPHandler(socketserver.StreamRequestHandler):
+class RTSPService(TCPService):
 
-    def setup(self):
-        super().setup()
-        self.logger = logging.getLogger()
-        self.logger.info(f'setup')
-        return
-
-    def finish(self):
-        super().finish()
-        self.logger.info(f'finish')
-        return
-
-    def handle(self):
-        self.logger.info(f'handle: client_address={self.client_address}')
-        while True:
-            req = self.rfile.readline()
-            if not req: break
-            self.logger.debug(f'handle: req={req!r}')
-            (cmd,_,args) = req.strip().partition(b' ')
-            cmd = cmd.upper()
-            if cmd == b'DETECT':
-                self.handle_detect(args)
-                break
-            else:
-                self.wfile.write(b'!UNKNOWN\r\n')
-                self.logger.error(f'handle: unknown command: req={req!r}')
-                break
+    def feedline(self, req):
+        (cmd,_,args) = req.strip().partition(b' ')
+        cmd = cmd.upper()
+        if cmd == b'DETECT':
+            self.handle_detect(args)
+        else:
+            self.sock.send(b'!UNKNOWN\r\n')
+            self.logger.error(f'unknown command: req={req!r}')
         return
 
     # handle_detect: "DETECT path clientport"
@@ -160,17 +278,17 @@ class RTSPHandler(socketserver.StreamRequestHandler):
         self.logger.debug(f'handle_detect: args={args!r}')
         flds = args.split()
         if len(flds) < 2:
-            self.wfile.write(b'!INVALID\r\n')
+            self.sock.send(b'!INVALID\r\n')
             self.logger.error(f'handle_detect: invalid args: args={args!r}')
             return
         try:
             rtp_port = int(flds[0])
             path = flds[1].decode('utf-8')
         except (UnicodeError, ValueError):
-            self.wfile.write(b'!INVALID\r\n')
+            self.sock.send(b'!INVALID\r\n')
             self.logger.error(f'handle_detect: invalid args: args={args!r}')
             return
-        (rtp_host, _) = self.client_address
+        (rtp_host, _) = self.sock.getpeername()
         # random.randbytes() is only supported in 3.9.
         session_id = bytes( random.randrange(256) for _ in range(4) )
         sock_rtp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -180,50 +298,24 @@ class RTSPHandler(socketserver.StreamRequestHandler):
         (_, port) = sock_rtp.getsockname()
         self.logger.info(f'handle_detect: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}')
         text = f'+OK {port} {session_id.hex()}'
-        self.wfile.write(text.encode('ascii')+b'\r\n')
-        handler = RTPHandler(self.server, sock_rtp, rtp_host, rtp_port, session_id)
-        self.server.register(sock_rtp.fileno(), handler)
-        handler.open()
+        self.sock.send(text.encode('ascii')+b'\r\n')
+        service = RTPService(self.server, sock_rtp, rtp_host, rtp_port, session_id)
+        self.loop.add(service)
+        service.init()
         return
 
-class RTSPServer(socketserver.TCPServer):
+##  RTSPServer
+##
+class RTSPServer(TCPServer):
 
-    def __init__(self, server_address, detector, dbgout=None):
-        super().__init__(server_address, RTSPHandler)
+    def __init__(self, port, detector, dbgout=None):
+        super().__init__(port)
         self.detector = detector
         self.dbgout = dbgout
-        self.logger = logging.getLogger()
-        self.epoll = select.epoll()
-        self.handlers = {}
         return
 
-    def service_actions(self):
-        super().service_actions()
-        for (fd,event) in self.epoll.poll(0):
-            if fd in self.handlers:
-                handler = self.handlers[fd]
-                handler.idle()
-        t = time.time()
-        for (fd,handler) in list(self.handlers.items()):
-            if not handler.is_alive(t):
-                self.unregister(fd)
-        return
-
-    def register(self, fd, handler):
-        self.logger.info(f'register: fd={fd}, handler={handler}')
-        self.epoll.register(fd, select.POLLIN)
-        self.handlers[fd] = handler
-        return
-
-    def unregister(self, fd):
-        assert fd in self.handlers
-        self.logger.info(f'unregister: fd={fd}')
-        self.epoll.unregister(fd)
-        handler = self.handlers[fd]
-        handler.close()
-        del self.handlers[fd]
-        return
-
+    def get_service(self, conn):
+        return RTSPService(self, conn)
 
 # main
 def main(argv):
@@ -253,11 +345,9 @@ def main(argv):
         detector = ONNXDetector(args[0], mode=mode)
     else:
         detector = DummyDetector()
-    logging.info(f'listening: at {server_port}...')
-    RTSPServer.allow_reuse_address = True
-    timeout = 0.05
-    with RTSPServer(('', server_port), detector, dbgout=dbgout) as server:
-        server.serve_forever(timeout)
+    loop = EventLoop()
+    loop.add(RTSPServer(server_port, detector, dbgout=dbgout))
+    loop.run(interval)
     return 0
 
 if __name__ == '__main__': sys.exit(main(sys.argv))
