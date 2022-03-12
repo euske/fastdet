@@ -88,7 +88,9 @@ public class DetectionTest : MonoBehaviour
     void Update()
     {
         if (16 <= _webcam.width && 16 <= _webcam.height) {
-            _detector.DetectImage(_webcam);
+            if (_detector.NumPendingRequests < 2) {
+                _detector.DetectImage(_webcam);
+            }
         }
         foreach (YLResult result in _detector.GetResults()) {
             _result = result;

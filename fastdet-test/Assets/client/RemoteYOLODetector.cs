@@ -15,8 +15,14 @@ namespace net.sss_consortium.fastdet {
 public class RemoteYOLODetector : IObjectDetector {
 
     internal struct Request {
+        public uint RequestId;
         public DateTime SentTime;
         public Rect ClipRect;
+        public override string ToString() {
+            return string.Format(
+                "<Request: RequstId={0}, SentTime={1}, ClipRect={2}>",
+                RequestId, SentTime, ClipRect);
+        }
     };
 
     // Detection mode.
@@ -293,6 +299,13 @@ public class RemoteYOLODetector : IObjectDetector {
         return _requestId;
     }
 
+    // The number of pending requests.
+    public int NumPendingRequests {
+        get {
+            return _requests.Count;
+        }
+    }
+
     private void performLocalDetection(uint requestId, Texture2D pixels, Rect clipRect) {
         if (_model == null) {
             Debug.LogWarning("performLocalDetection: model not loaded.");
@@ -395,7 +408,9 @@ public class RemoteYOLODetector : IObjectDetector {
         }
 
         Request request = new Request {
-            SentTime = DateTime.Now, ClipRect = clipRect
+            RequestId = requestId,
+            SentTime = DateTime.Now,
+            ClipRect = clipRect
         };
         _requests.Add(requestId, request);
         byte[] data = pixels.EncodeToJPG();
@@ -426,7 +441,18 @@ public class RemoteYOLODetector : IObjectDetector {
 
     // Gets the results (if any).
     public YLResult[] GetResults() {
-        // TODO: remove timeout keys from _requests.
+        // Remove timeout keys from _requests.
+        DateTime t = DateTime.Now;
+        List<uint> removed = new List<uint>();
+        foreach (Request req in _requests.Values) {
+            if (REQUEST_TIMEOUT < (t - req.SentTime).TotalSeconds) {
+                removed.Add(req.RequestId);
+                logit("Timeout: "+req);
+            }
+        }
+        foreach (uint requestId in removed) {
+            _requests.Remove(requestId);
+        }
         YLResult[] results = _results.ToArray();
         _results.Clear();
         return results;

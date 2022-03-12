@@ -25,6 +25,13 @@ public class DummyDetector : IObjectDetector {
         return 1;
     }
 
+    // The number of pending requests.
+    public int NumPendingRequests {
+        get {
+            return 0;
+        }
+    }
+
     // Gets the results (if any).
     public YLResult[] GetResults() {
         YLObject obj1 = new YLObject();

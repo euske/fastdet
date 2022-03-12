@@ -84,6 +84,9 @@ interface IObjectDetector : IDisposable {
     uint DetectImage(Texture image);
     // Gets the results (if any).
     YLResult[] GetResults();
+
+    // The number of pending requests.
+    int NumPendingRequests { get; }
 }
 
 } // namespace net.sss_consortium.fastdet
