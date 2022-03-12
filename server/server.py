@@ -51,7 +51,7 @@ class TCPService(SocketHandler):
         return
 
     def __repr__(self):
-        return f'<TCPService: addr={self.addr}>'
+        return f'<{self.__class__.__name__}: addr={self.addr}>'
 
     def idle(self):
         return self.alive
@@ -88,22 +88,23 @@ class UDPService(SocketHandler):
     def __init__(self, server, sock, timeout=10):
         super().__init__(sock)
         self.server = server
-        self.timeout = timeout
         self.addr = self.sock.getsockname()
-        self.active = time.time()
+        self.alive = True
         return
 
     def __repr__(self):
-        return f'<UDPService: addr={self.addr}>'
+        return f'<{self.__class__.__name__}: addr={self.addr}>'
 
     def idle(self):
-        return time.time() < (self.active + self.timeout)
+        return self.alive
+
+    def shutdown(self):
+        self.alive = False
+        return
 
     def action(self, ev):
         (data, addr) = self.sock.recvfrom(self.BUFSIZ)
-        if data:
-            self.recvdata(data, addr)
-            self.active = time.time()
+        self.recvdata(data, addr)
         return
 
     def recvdata(self, data, addr):
@@ -125,7 +126,7 @@ class TCPServer(SocketHandler):
         return
 
     def __repr__(self):
-        return f'<TCPServer: port={self.port}>'
+        return f'<{self.__class__.__name__}: port={self.port}>'
 
     def action(self, ev):
         (conn, addr) = self.sock.accept()
@@ -196,7 +197,7 @@ class RTPService(UDPService):
         return
 
     def __repr__(self):
-        return f'<RTPService: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>'
+        return f'<{self.__class__.__name__}: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>'
 
     def init(self):
         self.logger.info(f'init: rtp_host={self.rtp_host}, rtp_port={self.rtp_port}, session_id={self.session_id}>')
@@ -267,26 +268,31 @@ class RTSPService(TCPService):
         (cmd,_,args) = req.strip().partition(b' ')
         cmd = cmd.upper()
         if cmd == b'DETECT':
-            self.handle_detect(args)
+            self.detect(args)
         else:
             self.sock.send(b'!UNKNOWN\r\n')
             self.logger.error(f'unknown command: req={req!r}')
         return
 
-    # handle_detect: "DETECT path clientport"
-    def handle_detect(self, args):
-        self.logger.debug(f'handle_detect: args={args!r}')
+    def close(self):
+        super().close()
+        self.rtpservice.shutdown()
+        return
+
+    # detect: "DETECT clientport path"
+    def detect(self, args):
+        self.logger.debug(f'detect: args={args!r}')
         flds = args.split()
         if len(flds) < 2:
             self.sock.send(b'!INVALID\r\n')
-            self.logger.error(f'handle_detect: invalid args: args={args!r}')
+            self.logger.error(f'detect: invalid args: args={args!r}')
             return
         try:
             rtp_port = int(flds[0])
             path = flds[1].decode('utf-8')
         except (UnicodeError, ValueError):
             self.sock.send(b'!INVALID\r\n')
-            self.logger.error(f'handle_detect: invalid args: args={args!r}')
+            self.logger.error(f'detect: invalid args: args={args!r}')
             return
         (rtp_host, _) = self.sock.getpeername()
         # random.randbytes() is only supported in 3.9.
@@ -296,12 +302,13 @@ class RTSPService(TCPService):
         sock_rtp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock_rtp.bind(('', 0))
         (_, port) = sock_rtp.getsockname()
-        self.logger.info(f'handle_detect: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}')
+        self.logger.info(f'detect: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}')
         text = f'+OK {port} {session_id.hex()}'
         self.sock.send(text.encode('ascii')+b'\r\n')
-        service = RTPService(self.server, sock_rtp, rtp_host, rtp_port, session_id)
-        self.loop.add(service)
-        service.init()
+        self.rtpservice = RTPService(
+            self.server, sock_rtp, rtp_host, rtp_port, session_id)
+        self.loop.add(self.rtpservice)
+        self.rtpservice.init()
         return
 
 ##  RTSPServer
