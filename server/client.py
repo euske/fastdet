@@ -122,7 +122,7 @@ class RTSPClient:
 def main(argv):
     import getopt
     def usage():
-        print(f'usage: {argv[0]} [-d] [-t interval] [-p port] host [args]')
+        print(f'usage: {argv[0]} [-d] [-t interval] [-c host[:port]] [args]')
         return 100
     try:
         (opts, args) = getopt.getopt(argv[1:], 'dt:p:')
@@ -130,15 +130,19 @@ def main(argv):
         return usage()
     level = logging.INFO
     interval = 0.1
+    client_host = 'localhost'
     client_port = 10000
     for (k, v) in opts:
         if k == '-d': level = logging.DEBUG
         elif k == '-t': interval = float(v)
-        elif k == '-p': client_port = int(v)
+        elif k == '-c':
+            (host,_,port) = v.partition(':')
+            if host:
+                client_host = host
+            if port:
+                client_port = int(port)
     logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=level)
 
-    if not args: return usage()
-    client_host = args.pop(0)
     logging.info(f'connecting: {client_host}:{client_port}...')
     client = RTSPClient(client_host, client_port)
     client.open()

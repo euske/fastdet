@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import io
+import sys
 import logging
 from math import exp
 
@@ -146,10 +148,14 @@ class ONNXDetector(Detector):
                     a.append(YOLOObject(mi+1, conf, (x-w/2, y-h/2, w, h)))
         return a
 
-    @classmethod
-    def test_detector(klass, path='./testdata/dog.jpg'):
-        detector = klass('./models/yolov3-tiny.onnx')
+# main
+def main(argv):
+    args = argv[1:]
+    path = args.pop(0)
+    detector = ONNXDetector(path)
+    for path in args:
         with open(path, 'rb') as fp:
             data = fp.read()
         print(detector.perform(data))
-        return
+    return
+if __name__ == '__main__': sys.exit(main(sys.argv))

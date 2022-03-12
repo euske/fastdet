@@ -2,7 +2,6 @@
 ##
 ##  server$ python server.py -s 10000
 ##
-import io
 import sys
 import logging
 import time
@@ -12,6 +11,9 @@ import struct
 import random
 from detector import DummyDetector, ONNXDetector
 
+
+##  SocketHandler
+##
 class SocketHandler:
 
     def __init__(self, sock):
@@ -23,7 +25,7 @@ class SocketHandler:
     def idle(self):
         return True
 
-    def doit(self, ev):
+    def action(self, ev):
         return
 
     def close(self):
@@ -33,6 +35,110 @@ class SocketHandler:
         self.logger.info(f'closed: {self}')
         return
 
+
+##  TCPService
+##
+class TCPService(SocketHandler):
+
+    BUFSIZ = 65535
+
+    def __init__(self, server, sock):
+        super().__init__(sock)
+        self.server = server
+        self.addr = self.sock.getsockname()
+        self.alive = True
+        self.buf = b''
+        return
+
+    def __repr__(self):
+        return f'<TCPService: addr={self.addr}>'
+
+    def idle(self):
+        return self.alive
+
+    def action(self, ev):
+        data = self.sock.recv(self.BUFSIZ)
+        if data:
+            i0 = 0
+            while i0 < len(data):
+                i1 = data.find(b'\n', i0)
+                if i1 < 0:
+                    self.buf += data[i0:]
+                    break
+                self.buf += data[i0:i1+1]
+                self.feedline(self.buf)
+                self.buf = b''
+                i0 = i1+1
+        else:
+            if self.buf:
+                self.feedline(self.buf)
+            self.alive = False
+        return
+
+    def feedline(self, line):
+        return
+
+
+##  UDPService
+##
+class UDPService(SocketHandler):
+
+    BUFSIZ = 65535
+
+    def __init__(self, server, sock, timeout=10):
+        super().__init__(sock)
+        self.server = server
+        self.timeout = timeout
+        self.addr = self.sock.getsockname()
+        self.active = time.time()
+        return
+
+    def __repr__(self):
+        return f'<UDPService: addr={self.addr}>'
+
+    def idle(self):
+        return time.time() < (self.active + self.timeout)
+
+    def action(self, ev):
+        (data, addr) = self.sock.recvfrom(self.BUFSIZ)
+        if data:
+            self.recvdata(data, addr)
+            self.active = time.time()
+        return
+
+    def recvdata(self, data, addr):
+        return
+
+
+##  TCPServer
+##
+class TCPServer(SocketHandler):
+
+    def __init__(self, port):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('', port))
+        sock.listen(1)
+        super().__init__(sock)
+        self.port = port
+        self.logger.info(f'listening: port={port}...')
+        return
+
+    def __repr__(self):
+        return f'<TCPServer: port={self.port}>'
+
+    def action(self, ev):
+        (conn, addr) = self.sock.accept()
+        self.logger.info(f'accept: {addr}')
+        self.loop.add(self.get_service(conn))
+        return
+
+    def get_service(self, conn):
+        return TCPService(self, conn)
+
+
+##  EventLoop
+##
 class EventLoop:
 
     def __init__(self):
@@ -55,7 +161,7 @@ class EventLoop:
             for (fd, ev) in self.poll.poll(interval):
                 if ev & select.EPOLLIN and fd in self.handlers:
                     handler = self.handlers[fd]
-                    handler.doit(ev)
+                    handler.action(ev)
             self.idle()
         return
 
@@ -71,102 +177,12 @@ class EventLoop:
             handler.close()
         return
 
-class TCPService(SocketHandler):
-
-    BUFSIZ = 65535
-
-    def __init__(self, server, sock):
-        super().__init__(sock)
-        self.server = server
-        self.addr = self.sock.getsockname()
-        self.alive = True
-        self.buf = b''
-        return
-
-    def __repr__(self):
-        return f'<TCPService: addr={self.addr}>'
-
-    def idle(self):
-        return self.alive
-
-    def doit(self, ev):
-        data = self.sock.recv(self.BUFSIZ)
-        if data:
-            i0 = 0
-            while i0 < len(data):
-                i1 = data.find(b'\n', i0)
-                if i1 < 0:
-                    self.buf += data[i0:]
-                    break
-                self.buf += data[i0:i1+1]
-                self.feedline(self.buf)
-                self.buf = b''
-                i0 = i1+1
-        else:
-            if self.buf:
-                self.feedline(self.buf)
-            self.alive = False
-        return
-
-    def feedline(self, line):
-        return
-
-class UDPService(SocketHandler):
-
-    BUFSIZ = 65535
-
-    def __init__(self, server, sock, timeout=10):
-        super().__init__(sock)
-        self.server = server
-        self.timeout = timeout
-        self.addr = self.sock.getsockname()
-        self.active = time.time()
-        return
-
-    def __repr__(self):
-        return f'<UDPService: addr={self.addr}>'
-
-    def idle(self):
-        return time.time() < (self.active + self.timeout)
-
-    def doit(self, ev):
-        (data, addr) = self.sock.recvfrom(self.BUFSIZ)
-        if data:
-            self.recv(data, addr)
-            self.active = time.time()
-        return
-
-    def recv(self, data, addr):
-        return
-
-class Server(SocketHandler):
-
-    def __init__(self, port):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(('', port))
-        sock.listen(1)
-        super().__init__(sock)
-        self.port = port
-        self.logger.info(f'listening: port={port}...')
-        return
-
-    def __repr__(self):
-        return f'<Server: port={self.port}>'
-
-    def doit(self, ev):
-        (conn, addr) = self.sock.accept()
-        self.logger.info(f'accept: {addr}')
-        self.loop.add(self.get_service(conn))
-        return
-
-    def get_service(self, conn):
-        return TCPService(self, conn)
-
 
 ##  RTPService
 ##
 class RTPService(UDPService):
+
+    CHUNK_SIZE = 40000
 
     def __init__(self, server, sock, rtp_host, rtp_port, session_id, timeout=10):
         super().__init__(server, sock)
@@ -190,7 +206,7 @@ class RTPService(UDPService):
         self._active = time.time()
         return
 
-    def recv(self, data, addr):
+    def recvdata(self, data, addr):
         if addr != (self.rtp_host, self.rtp_port): return
         (flags,pt,seqno) = struct.unpack('>BBH', data[:4])
         self.logger.debug(
@@ -229,7 +245,7 @@ class RTPService(UDPService):
         self.send(header+result)
         return
 
-    def send(self, data, chunk_size=32768):
+    def send(self, data, chunk_size=CHUNK_SIZE):
         i0 = 0
         while i0 < len(data):
             i1 = i0 + chunk_size
@@ -272,7 +288,7 @@ class RTSPService(TCPService):
             self.sock.send(b'!INVALID\r\n')
             self.logger.error(f'handle_detect: invalid args: args={args!r}')
             return
-        (rtp_host, _) = self.addr
+        (rtp_host, _) = self.sock.getpeername()
         # random.randbytes() is only supported in 3.9.
         session_id = bytes( random.randrange(256) for _ in range(4) )
         sock_rtp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -290,7 +306,7 @@ class RTSPService(TCPService):
 
 ##  RTSPServer
 ##
-class RTSPServer(Server):
+class RTSPServer(TCPServer):
 
     def __init__(self, port, detector, dbgout=None):
         super().__init__(port)
