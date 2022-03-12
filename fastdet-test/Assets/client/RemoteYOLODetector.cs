@@ -162,6 +162,7 @@ public class RemoteYOLODetector : IObjectDetector {
         _buffer = new RenderTexture(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, 0);
         _pixels = new Texture2D(_buffer.width, _buffer.height);
         _requestId = 0;
+        _requests = new Dictionary<uint, Request>();
         _results = new List<YLResult>();
         if (yoloModel != null) {
             _model = ModelLoader.Load(yoloModel);
@@ -228,7 +229,6 @@ public class RemoteYOLODetector : IObjectDetector {
         _recv_buf = null;
         _recv_seqno = 0;
         _send_seqno = 1;
-        _requests = new Dictionary<uint, Request>();
 
         // Send the dummy packet to initiate the stream.
         _udp.Send(RTP_DUMMY_PACKET, RTP_DUMMY_PACKET.Length);
