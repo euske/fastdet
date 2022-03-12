@@ -34,7 +34,7 @@ class RTSPClient:
         self.sock_rtsp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock_rtsp.connect((self.host, self.port))
         self.logger.info(f'open: connected.')
-        req = f'DETECT {lport} {self.path}'
+        req = f'FEED {lport} {self.path}'
         self.logger.debug(f'send: req={req!r}')
         self.sock_rtsp.send(req.encode('ascii')+b'\r\n')
         resp = self.sock_rtsp.recv(self.BUFSIZ)

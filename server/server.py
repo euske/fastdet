@@ -267,8 +267,8 @@ class RTSPService(TCPService):
     def feedline(self, req):
         (cmd,_,args) = req.strip().partition(b' ')
         cmd = cmd.upper()
-        if cmd == b'DETECT':
-            self.detect(args)
+        if cmd == b'FEED':
+            self.startfeed(args)
         else:
             self.sock.send(b'!UNKNOWN\r\n')
             self.logger.error(f'unknown command: req={req!r}')
@@ -279,20 +279,20 @@ class RTSPService(TCPService):
         self.rtpservice.shutdown()
         return
 
-    # detect: "DETECT clientport path"
-    def detect(self, args):
-        self.logger.debug(f'detect: args={args!r}')
+    # startfeed: "FEED clientport path"
+    def startfeed(self, args):
+        self.logger.debug(f'startfeed: args={args!r}')
         flds = args.split()
         if len(flds) < 2:
             self.sock.send(b'!INVALID\r\n')
-            self.logger.error(f'detect: invalid args: args={args!r}')
+            self.logger.error(f'startfeed: invalid args: args={args!r}')
             return
         try:
             rtp_port = int(flds[0])
             path = flds[1].decode('utf-8')
         except (UnicodeError, ValueError):
             self.sock.send(b'!INVALID\r\n')
-            self.logger.error(f'detect: invalid args: args={args!r}')
+            self.logger.error(f'startfeed: invalid args: args={args!r}')
             return
         (rtp_host, _) = self.sock.getpeername()
         # random.randbytes() is only supported in 3.9.
@@ -302,7 +302,7 @@ class RTSPService(TCPService):
         sock_rtp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock_rtp.bind(('', 0))
         (_, port) = sock_rtp.getsockname()
-        self.logger.info(f'detect: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}')
+        self.logger.info(f'startfeed: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}')
         text = f'+OK {port} {session_id.hex()}'
         self.sock.send(text.encode('ascii')+b'\r\n')
         self.rtpservice = RTPService(

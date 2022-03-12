@@ -200,7 +200,7 @@ public class RemoteYOLODetector : IObjectDetector {
         _udp = new UdpClient(0);
         int lport = (_udp.Client.LocalEndPoint as IPEndPoint).Port;
         NetworkStream stream = _tcp.GetStream();
-        string req = "DETECT "+lport+" "+path+"\r\n";
+        string req = "FEED "+lport+" "+path+"\r\n";
         byte[] data = Encoding.UTF8.GetBytes(req);
         stream.Write(data, 0, data.Length);
 
