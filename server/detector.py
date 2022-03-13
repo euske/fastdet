@@ -2,19 +2,11 @@
 import io
 import sys
 import logging
+import numpy as np
 from math import exp
 
 def sigmoid(x):
     return 1/(1+exp(-x))
-
-def argmax(a, key=lambda x:x):
-    (imax, vmax) = (None, None)
-    for (i,x) in enumerate(a):
-        v = key(x)
-        if vmax is None or vmax < v:
-            (imax, vmax) = (i, v)
-    if imax is None: raise ValueError(a)
-    return (imax, vmax)
 
 def rect_intersect(rect0, rect1):
     (x0,y0,w0,h0) = rect0
@@ -48,18 +40,19 @@ class YOLOObject:
 # soft_nms: https://arxiv.org/abs/1704.04503
 def soft_nms(objs, threshold):
     result = []
-    score = { obj:obj.conf for obj in objs }
+    cands = { obj:obj.conf for obj in objs }
     while objs:
-        (i,conf) = argmax(objs, key=lambda obj:score[obj])
-        if conf < threshold: break
-        m = objs[i]
-        result.append(m)
-        del objs[i]
-        for obj in objs:
-            v = m.get_iou(obj.bbox)
-            score[obj] = score[obj] * exp(-3*v*v)
-    result.sort(key=lambda obj:score[obj], reverse=True)
-    return result
+        (mconf,mobj) = (-1,None)
+        for (obj,conf) in cands.items():
+            if mconf < conf:
+                (mconf,mobj) = (conf,obj)
+        if mconf < threshold: break
+        result.append((mconf, mobj))
+        del cands[mobj]
+        cands = { obj: conf*exp(-3*(mobj.get_iou(obj.bbox)**2))
+                  for (obj,conf) in cands.items() }
+    result.sort(reverse=True)
+    return [ obj for (_,obj) in result ]
 
 
 ##  Detector
@@ -108,7 +101,6 @@ class ONNXDetector(Detector):
 
     def perform(self, data):
         from PIL import Image
-        import numpy as np
         (width, height) = self.IMAGE_SIZE
         img = Image.open(io.BytesIO(data))
         if img.size != self.IMAGE_SIZE:
@@ -134,17 +126,14 @@ class ONNXDetector(Detector):
             for (x0,col) in enumerate(row):
                 for (k,(ax,ay)) in enumerate(anchors):
                     b = (5+self.NUM_CLASS) * k
+                    conf = sigmoid(col[b+4])
+                    if conf < self.threshold: continue
                     x = (x0 + sigmoid(col[b+0])) / cols
                     y = (y0 + sigmoid(col[b+1])) / rows
                     w = ax * exp(col[b+2]) / width
                     h = ay * exp(col[b+3]) / height
-                    conf = sigmoid(col[b+4])
-                    mp = mi = None
-                    for i in range(self.NUM_CLASS):
-                        p = col[b+5+i]
-                        if mp is None or mp < p:
-                            (mp,mi) = (p,i)
-                    conf *= sigmoid(mp)
+                    mi = np.argmax(col[b+5:b+5+self.NUM_CLASS])
+                    conf *= sigmoid(col[b+5+mi])
                     a.append(YOLOObject(mi+1, conf, (x-w/2, y-h/2, w, h)))
         return a
 
