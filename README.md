@@ -2,7 +2,52 @@
 
 Fast object detector with distributed neural network.
 
-Namespace: net.sss_consortium.fastdet
+## Prerequisites
+
+### Client
+
+ - Unity
+ - Barracuda (> 2.0.0)
+
+### Server
+
+ - Python
+ - Pillow
+ - ONNX Runtime (w/ GPU)
+
+    $ pip install -r requirements.txt
+
+## Testing
+
+### Test detector only
+
+    $ python server/detector.py models/yolov3-full.onnx testdata/dog.jpg
+
+### Test server with dummy detector
+
+    $ python server/server.py -s 10000
+    $ python server/client.py -c localhost:10000 testdata/dog.jpg
+
+### Test server with full detector
+
+    $ python server/server.py -s 10000 models/yolov3-full.onnx
+    $ python server/client.py -c localhost:10000 testdata/dog.jpg
+
+### Test server w/ CUDA
+
+    $ python server/server.py -s 10000 -m cuda models/yolov3-full.onnx
+
+## Running
+
+ 1. launch the server.
+ 2. open the SampleScene.unity.
+ 3. configure the Server Url with the appropriate host/port.
+ 4. play the scene.
+
+
+## API
+
+Namespace: `net.sss_consortium.fastdet`
 
 ```
 //  YLObject
@@ -53,5 +98,8 @@ interface IObjectDetector : IDisposable {
     uint DetectImage(Texture image);
     // Gets the results (if any).
     YLResult[] GetResults();
+
+    // The number of pending requests.
+    public int NumPendingRequests { get; }
 }
 ```
