@@ -34,16 +34,18 @@ public class DummyDetector : IObjectDetector {
 
     // Gets the results (if any).
     public YLResult[] GetResults() {
-        YLObject obj1 = new YLObject();
-        obj1.Label = "cat";
-        obj1.Conf = 1.0f;
-        obj1.BBox = new Rect(10, 10, 100, 100);
-        YLResult result1 = new YLResult();
-        result1.RequestId = 1;
-        result1.SentTime = DateTime.Now;
-        result1.RecvTime = DateTime.Now;
-        result1.InferenceTime = 0;
-        result1.Objects = new YLObject[] { obj1 };
+        YLObject obj1 = new YLObject {
+            Label = "cat",
+            Conf = 1.0f,
+            BBox = new Rect(0.5f, 0.5f, 0.4f, 0.4f),
+        };
+        YLResult result1 = new YLResult {
+            RequestId = 1,
+            SentTime = DateTime.Now,
+            RecvTime = DateTime.Now,
+            InferenceTime = 0,
+            Objects = new YLObject[] { obj1 },
+        };
         return new YLResult[] { result1 };
     }
 }
