@@ -62,9 +62,20 @@ class Detector:
     IMAGE_SIZE = (416,416)
     NUM_CLASS = 80
 
+    def __init__(self, dbgout=None):
+        self.dbgout = dbgout
+        return
+
+    def perform(self, data):
+        if self.dbgout is not None:
+            with open(self.dbgout, 'wb') as fp:
+                fp.write(data)
+        return
+
 class DummyDetector(Detector):
 
     def perform(self, data):
+        super().perform(data)
         (width, height) = self.IMAGE_SIZE
         klass = 16              # cat
         conf = 1.0
@@ -88,7 +99,8 @@ class ONNXDetector(Detector):
             ),
     }
 
-    def __init__(self, path, mode=None, threshold=0.3):
+    def __init__(self, path, mode=None, threshold=0.3, dbgout=None):
+        super().__init__(dbgout=dbgout)
         import onnxruntime as ort
         providers = ['CPUExecutionProvider']
         if mode == 'cuda':
@@ -100,6 +112,7 @@ class ONNXDetector(Detector):
         return
 
     def perform(self, data):
+        super().perform(data)
         from PIL import Image
         (width, height) = self.IMAGE_SIZE
         img = Image.open(io.BytesIO(data))

@@ -42,9 +42,8 @@ class TCPService(SocketHandler):
 
     BUFSIZ = 65535
 
-    def __init__(self, server, sock):
+    def __init__(self, sock):
         super().__init__(sock)
-        self.server = server
         self.addr = self.sock.getsockname()
         self.alive = True
         self.buf = b''
@@ -85,9 +84,8 @@ class UDPService(SocketHandler):
 
     BUFSIZ = 65535
 
-    def __init__(self, server, sock, timeout=10):
+    def __init__(self, sock, timeout=10):
         super().__init__(sock)
-        self.server = server
         self.addr = self.sock.getsockname()
         self.alive = True
         return
@@ -178,14 +176,15 @@ class EventLoop:
         return
 
 
-##  RTPService
+##  DetectService
 ##
-class RTPService(UDPService):
+class DetectService(UDPService):
 
     CHUNK_SIZE = 40000
 
-    def __init__(self, server, sock, rtp_host, rtp_port, session_id, timeout=10):
-        super().__init__(server, sock)
+    def __init__(self, sock, detector, rtp_host, rtp_port, session_id, timeout=10):
+        super().__init__(sock)
+        self.detector = detector
         self.rtp_host = rtp_host
         self.rtp_port = rtp_port
         self.session_id = session_id
@@ -231,12 +230,9 @@ class RTPService(UDPService):
         (tp, reqid, length) = struct.unpack('>4sLL', data[:12])
         data = data[12:]
         if len(data) != length: return # missing data
-        if self.server.dbgout is not None:
-            with open(self.server.dbgout, 'wb') as fp:
-                fp.write(data)
         t0 = time.time()
         result = b''
-        for (klass, conf, x, y, w, h) in self.server.detector.perform(data):
+        for (klass, conf, x, y, w, h) in self.detector.perform(data):
             result += struct.pack(
                 '>BBhhhh', klass, int(conf*255),
                 int(x), int(y), int(w), int(h))
@@ -263,6 +259,12 @@ class RTPService(UDPService):
 ##
 class RTSPService(TCPService):
 
+    def __init__(self, sock, detector):
+        super().__init__(sock)
+        self.detector = detector
+        self.service = None
+        return
+
     def feedline(self, req):
         (cmd,_,args) = req.strip().partition(b' ')
         cmd = cmd.upper()
@@ -275,7 +277,7 @@ class RTSPService(TCPService):
 
     def close(self):
         super().close()
-        self.rtpservice.shutdown()
+        self.service.shutdown()
         return
 
     # startfeed: "FEED clientport path"
@@ -304,24 +306,23 @@ class RTSPService(TCPService):
         self.logger.info(f'startfeed: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}')
         text = f'+OK {port} {session_id.hex()}'
         self.sock.send(text.encode('ascii')+b'\r\n')
-        self.rtpservice = RTPService(
-            self.server, sock_rtp, rtp_host, rtp_port, session_id)
-        self.loop.add(self.rtpservice)
-        self.rtpservice.init()
+        self.service = DetectService(
+            sock_rtp, self.detector, rtp_host, rtp_port, session_id)
+        self.service.init()
+        self.loop.add(self.service)
         return
 
 ##  RTSPServer
 ##
 class RTSPServer(TCPServer):
 
-    def __init__(self, port, detector, dbgout=None):
+    def __init__(self, port, detector):
         super().__init__(port)
         self.detector = detector
-        self.dbgout = dbgout
         return
 
     def get_service(self, conn):
-        return RTSPService(self, conn)
+        return RTSPService(conn, self.detector)
 
 # main
 def main(argv):
@@ -348,11 +349,11 @@ def main(argv):
 
     # Server mode.
     if args:
-        detector = ONNXDetector(args[0], mode=mode)
+        detector = ONNXDetector(args[0], mode=mode, dbgout=dbgout)
     else:
-        detector = DummyDetector()
+        detector = DummyDetector(dbgout=dbgout)
     loop = EventLoop()
-    loop.add(RTSPServer(server_port, detector, dbgout=dbgout))
+    loop.add(RTSPServer(server_port, detector))
     loop.run(interval)
     return 0
 
