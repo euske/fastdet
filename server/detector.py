@@ -3,6 +3,7 @@ import io
 import sys
 import logging
 import numpy as np
+import time
 from math import exp
 
 def sigmoid(x):
@@ -158,6 +159,9 @@ def main(argv):
     for path in args:
         with open(path, 'rb') as fp:
             data = fp.read()
-        print(detector.perform(data))
+        t0 = time.time()
+        result = detector.perform(data)
+        dt = time.time() - t0
+        print(dt, result)
     return
 if __name__ == '__main__': sys.exit(main(sys.argv))
