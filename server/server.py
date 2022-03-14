@@ -62,7 +62,11 @@ class TCPService(SocketHandler):
         return
 
     def action(self, ev):
-        data = self.sock.recv(self.BUFSIZ)
+        try:
+            data = self.sock.recv(self.BUFSIZ)
+        except OSError:
+            self.shutdown()
+            return
         if data:
             i0 = 0
             while i0 < len(data):
@@ -93,8 +97,11 @@ class UDPService(SocketHandler):
         return
 
     def action(self, ev):
-        (data, addr) = self.sock.recvfrom(self.BUFSIZ)
-        self.recvdata(data, addr)
+        try:
+            (data, addr) = self.sock.recvfrom(self.BUFSIZ)
+            self.recvdata(data, addr)
+        except OSError:
+            self.shutdown()
         return
 
     def recvdata(self, data, addr):
