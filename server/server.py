@@ -277,7 +277,9 @@ class RTSPService(TCPService):
 
     def close(self):
         super().close()
-        self.service.shutdown()
+        if self.service is not None:
+            self.service.shutdown()
+            self.service = None
         return
 
     # startfeed: "FEED clientport path"
