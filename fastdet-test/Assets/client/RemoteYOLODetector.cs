@@ -328,13 +328,14 @@ public class RemoteYOLODetector : IObjectDetector {
                 for (int y0 = 0; y0 < rows; y0++) {
                     for (int x0 = 0; x0 < cols; x0++) {
                         for (int k = 0; k < 3; k++) {
-                            Vector2 anchor = anchors[z*3+k];
                             int b = (5+LABELS.Length-1) * k;
+                            float conf = Sigmoid(t[0,y0,x0,b+4]);
+                            if (conf < Threshold) continue;
+                            Vector2 anchor = anchors[z*3+k];
                             float x = (x0 + Sigmoid(t[0,y0,x0,b+0])) / cols;
                             float y = (y0 + Sigmoid(t[0,y0,x0,b+1])) / rows;
                             float w = (anchor.x * Mathf.Exp(t[0,y0,x0,b+2])) / IMAGE_SIZE_WIDTH;
                             float h = (anchor.y * Mathf.Exp(t[0,y0,x0,b+3])) / IMAGE_SIZE_HEIGHT;
-                            float conf = Sigmoid(t[0,y0,x0,b+4]);
                             float maxProb = -1;
                             int maxIndex = 0;
                             for (int index = 1; index < LABELS.Length; index++) {
@@ -343,11 +344,11 @@ public class RemoteYOLODetector : IObjectDetector {
                                     maxProb = p; maxIndex = index;
                                 }
                             }
-                            float score = conf * Sigmoid(maxProb);
-                            if (score < Threshold) continue;
+                            conf *= Sigmoid(maxProb);
+                            if (conf < Threshold) continue;
                             YLObject obj1 = new YLObject {
                                 Label = LABELS[maxIndex],
-                                Conf = score,
+                                Conf = conf,
                                 BBox = new Rect(
                                     clipRect.x+(x-w/2)*clipRect.width,
                                     clipRect.y+(y-h/2)*clipRect.height,
@@ -417,6 +418,7 @@ public class RemoteYOLODetector : IObjectDetector {
         using (MemoryStream buf = new MemoryStream()) {
             writeBytes(buf, JPEG_TYPE);
             writeUInt32(buf, requestId);
+            writeUInt32(buf, (uint)(Threshold*100));
             writeUInt32(buf, (uint)data.Length);
             writeBytes(buf, data);
             sendRTP(buf.ToArray());

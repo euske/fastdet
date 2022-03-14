@@ -19,7 +19,7 @@ class RTSPClient:
 
     BUFSIZ = 65536
 
-    def __init__(self, host, port, path='xxx'):
+    def __init__(self, host, port, path='detect'):
         self.logger = logging.getLogger()
         self.host = host
         self.port = port
@@ -62,6 +62,11 @@ class RTSPClient:
         self._recv_buf = b''
         self._recv_seqno = 0
         self._send_seqno = 1
+        return
+
+    def request(self, reqid, threshold, data):
+        header = struct.pack('>4sLLL', b'JPEG', reqid, int(threshold*100), len(data))
+        self.send(header+data)
         return
 
     def send(self, data, chunk_size=32768):
@@ -138,6 +143,7 @@ def main(argv):
     interval = 0.1
     client_host = 'localhost'
     client_port = 10000
+    threshold = 0.3
     for (k, v) in opts:
         if k == '-d': level = logging.DEBUG
         elif k == '-t': interval = float(v)
@@ -160,8 +166,7 @@ def main(argv):
     while True:
         for data in files:
             reqid += 1
-            header = struct.pack('>4sLL', b'JPEG', reqid, len(data))
-            client.send(header+data)
+            client.request(reqid, threshold, data)
             client.idle()
             time.sleep(interval)
     return 0

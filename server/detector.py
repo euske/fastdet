@@ -78,7 +78,7 @@ class Detector:
 
 class DummyDetector(Detector):
 
-    def perform(self, data):
+    def perform(self, data, threshold=0.3):
         super().perform(data)
         (width, height) = self.IMAGE_SIZE
         klass = 16              # cat
@@ -103,19 +103,18 @@ class ONNXDetector(Detector):
             ),
     }
 
-    def __init__(self, path, mode=None, threshold=0.3, dbgout=None):
+    def __init__(self, path, mode=None, dbgout=None):
         super().__init__(dbgout=dbgout)
         import onnxruntime as ort
         providers = ['CPUExecutionProvider']
         if mode == 'cuda':
             providers.insert(0, 'CUDAExecutionProvider')
         self.model = ort.InferenceSession(path, providers=providers)
-        self.threshold = threshold
         self.logger = logging.getLogger()
         self.logger.info(f'load: path={path}, providers={providers}')
         return
 
-    def perform(self, data):
+    def perform(self, data, threshold=0.3):
         super().perform(data)
         from PIL import Image
         (width, height) = self.IMAGE_SIZE
@@ -127,15 +126,15 @@ class ONNXDetector(Detector):
         aas = self.ANCHORS[len(outputs)]
         objs = []
         for (anchors,output) in zip(aas, outputs):
-            objs.extend(self.process_yolo(anchors, output[0]))
-        objs = soft_nms(objs, threshold=self.threshold)
+            objs.extend(self.process_yolo(anchors, output[0], threshold=threshold))
+        objs = soft_nms(objs, threshold=threshold)
         results = [ (obj.klass, obj.conf,
                      obj.bbox[0]*width, obj.bbox[1]*height,
                      obj.bbox[2]*width, obj.bbox[3]*height) for obj in objs ]
         self.logger.info(f'perform: results={results}')
         return results
 
-    def process_yolo(self, anchors, m):
+    def process_yolo(self, anchors, m, threshold=0.3):
         (width, height) = self.IMAGE_SIZE
         (rows,cols,_) = m.shape
         a = []
@@ -144,13 +143,14 @@ class ONNXDetector(Detector):
                 for (k,(ax,ay)) in enumerate(anchors):
                     b = (5+self.NUM_CLASS) * k
                     conf = sigmoid(col[b+4])
-                    if conf < self.threshold: continue
+                    if conf < threshold: continue
                     x = (x0 + sigmoid(col[b+0])) / cols
                     y = (y0 + sigmoid(col[b+1])) / rows
                     w = ax * exp(col[b+2]) / width
                     h = ay * exp(col[b+3]) / height
                     mi = np.argmax(col[b+5:b+5+self.NUM_CLASS])
                     conf *= sigmoid(col[b+5+mi])
+                    if conf < threshold: continue
                     a.append(YOLOObject(mi+1, conf, (x-w/2, y-h/2, w, h)))
         return a
 

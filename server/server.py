@@ -217,19 +217,20 @@ class DetectService(UDPService):
 
     def process_data(self, data):
         self.logger.debug(f'process_data: {len(data)}')
-        if len(data) < 12: return # invalid data
-        (tp, reqid, length) = struct.unpack('>4sLL', data[:12])
-        data = data[12:]
+        if len(data) < 16: return # invalid data
+        (tp, reqid, threshold, length) = struct.unpack('>4sLLL', data[:16])
+        data = data[16:]
         if len(data) != length: return # missing data
         t0 = time.time()
-        result = b''
-        for (klass, conf, x, y, w, h) in self.detector.perform(data):
-            result += struct.pack(
+        results = self.detector.perform(data, threshold=threshold*0.01)
+        msec = int((time.time() - t0)*1000)
+        buf = b''
+        for (klass, conf, x, y, w, h) in results:
+            buf += struct.pack(
                 '>BBhhhh', klass, int(conf*255),
                 int(x), int(y), int(w), int(h))
-        msec = int((time.time() - t0)*1000)
-        header = struct.pack('>4sLLL', b'YOLO', reqid, msec, len(result))
-        self.send(header+result)
+        header = struct.pack('>4sLLL', b'YOLO', reqid, msec, len(buf))
+        self.send(header+buf)
         return
 
     def send(self, data, chunk_size=CHUNK_SIZE):
