@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 ##
-##  server$ python server.py -s 10000
+##  server.py - detection server
+##
+##  usage:
+##    (dummy) $ python server.py
+##    (tiny w/cpu)  $ python server.py yolov3-tiny.onnx
+##    (full w/cuda) $ python server.py -m cuda yolov3-full.onnx
 ##
 import sys
 import logging
@@ -16,16 +21,27 @@ from detector import DummyDetector, ONNXDetector
 ##
 class SocketHandler:
 
+    BUFSIZ = 65535
+
     def __init__(self, sock):
         self.logger = logging.getLogger()
         self.sock = sock
+        self.addr = sock.getsockname()
         self.loop = None
+        self.alive = True
         return
 
+    def __repr__(self):
+        return f'<{self.__class__.__name__}: addr={self.addr}>'
+
     def idle(self):
-        return True
+        return self.alive
 
     def action(self, ev):
+        return
+
+    def shutdown(self):
+        self.alive = False
         return
 
     def close(self):
@@ -40,20 +56,10 @@ class SocketHandler:
 ##
 class TCPService(SocketHandler):
 
-    BUFSIZ = 65535
-
     def __init__(self, sock):
         super().__init__(sock)
-        self.addr = self.sock.getsockname()
-        self.alive = True
         self.buf = b''
         return
-
-    def __repr__(self):
-        return f'<{self.__class__.__name__}: addr={self.addr}>'
-
-    def idle(self):
-        return self.alive
 
     def action(self, ev):
         data = self.sock.recv(self.BUFSIZ)
@@ -71,7 +77,7 @@ class TCPService(SocketHandler):
         else:
             if self.buf:
                 self.feedline(self.buf)
-            self.alive = False
+            self.shutdown()
         return
 
     def feedline(self, line):
@@ -82,22 +88,8 @@ class TCPService(SocketHandler):
 ##
 class UDPService(SocketHandler):
 
-    BUFSIZ = 65535
-
-    def __init__(self, sock, timeout=10):
+    def __init__(self, sock):
         super().__init__(sock)
-        self.addr = self.sock.getsockname()
-        self.alive = True
-        return
-
-    def __repr__(self):
-        return f'<{self.__class__.__name__}: addr={self.addr}>'
-
-    def idle(self):
-        return self.alive
-
-    def shutdown(self):
-        self.alive = False
         return
 
     def action(self, ev):
@@ -202,7 +194,6 @@ class DetectService(UDPService):
         data = b'\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
         self.sock.sendto(data, (self.rtp_host, self.rtp_port))
         self._send_seqno += 1
-        self._active = time.time()
         return
 
     def recvdata(self, data, addr):
@@ -330,7 +321,7 @@ class RTSPServer(TCPServer):
 def main(argv):
     import getopt
     def usage():
-        print(f'usage: {argv[0]} [-d] [-o dbgout] [-m mode] [-s port] [-t interval] [args]')
+        print(f'usage: {argv[0]} [-d] [-o dbgout] [-m mode] [-s port] [-t interval] [onnx]')
         return 100
     try:
         (opts, args) = getopt.getopt(argv[1:], 'do:m:s:t:')

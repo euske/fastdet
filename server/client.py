@@ -1,8 +1,14 @@
 #!/usr/bin/env python
+##
+##  client.py - test client
+##
+##  usage:
+##    $ python client.py testdata/dog.jpg
+##
 import sys
 import logging
 import time
-import select
+import selectors
 import socket
 import struct
 
@@ -51,8 +57,8 @@ class RTSPClient:
         # Send the dummy packet to initiate the stream.
         data = b'\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
         self.sock_rtp.sendto(data, (self.host, self.rtp_port))
-        self.epoll = select.epoll()
-        self.epoll.register(self.sock_rtp.fileno(), select.POLLIN)
+        self.selector = selectors.DefaultSelector()
+        self.fd = self.selector.register(self.sock_rtp, selectors.EVENT_READ)
         self._recv_buf = b''
         self._recv_seqno = 0
         self._send_seqno = 1
@@ -74,8 +80,8 @@ class RTSPClient:
 
     def idle(self, timeout=0):
         # Poll RTP ports.
-        for (fd,event) in self.epoll.poll(timeout):
-            if fd == self.sock_rtp.fileno():
+        for (fd, ev) in self.selector.select(timeout):
+            if ev & selectors.EVENT_READ and fd == self.fd:
                 while True:
                     try:
                         (data, addr) = self.sock_rtp.recvfrom(self.BUFSIZ)
@@ -122,7 +128,7 @@ class RTSPClient:
 def main(argv):
     import getopt
     def usage():
-        print(f'usage: {argv[0]} [-d] [-t interval] [-c host[:port]] [args]')
+        print(f'usage: {argv[0]} [-d] [-t interval] [-c host[:port]] [file ...]')
         return 100
     try:
         (opts, args) = getopt.getopt(argv[1:], 'dt:p:')

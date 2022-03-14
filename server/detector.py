@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+##
+##  detector.py - YOLO object detection
+##
 import io
 import sys
 import logging
