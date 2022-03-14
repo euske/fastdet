@@ -11,6 +11,7 @@ public class DetectionTest : MonoBehaviour
     public RawImage rawImage = null;
     public string serverUrl = null;
     public NNModel yoloModel = null;
+    public GUIStyle textStyle = new GUIStyle();
 
     private WebCamTexture _webcam;
     private IObjectDetector _detector;
@@ -57,7 +58,7 @@ public class DetectionTest : MonoBehaviour
             int total = (int)((result.RecvTime-result.SentTime).TotalSeconds*1000);
             int infer = (int)(result.InferenceTime*1000);
             string text = "Total: "+total+"ms, Inference: "+infer+"ms";
-            GUI.Label(new Rect(10,10,300,20), text);
+            GUI.Label(new Rect(10,10,300,20), text, textStyle);
             foreach (YLObject obj1 in result.Objects) {
                 Rect rect = new Rect(
                     obj1.BBox.x*width,
@@ -69,7 +70,7 @@ public class DetectionTest : MonoBehaviour
             }
         }
         if (_detector != null) {
-            if (GUI.Button(new Rect(width-100,10,80,30), _detector.Mode.ToString())) {
+            if (GUI.Button(new Rect(width-200,20,160,60), _detector.Mode.ToString())) {
                 switch (_detector.Mode) {
                 case YLDetMode.ClientOnly:
                     _detector.Mode = YLDetMode.ServerOnly;
@@ -81,6 +82,7 @@ public class DetectionTest : MonoBehaviour
                     _detector.Mode = YLDetMode.ClientOnly;
                     break;
                 }
+                _result = null;
             }
         }
     }
