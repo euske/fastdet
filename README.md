@@ -37,6 +37,12 @@ Fast object detector with distributed neural network.
 
     $ python server/server.py -s 10000 -m cuda models/yolov3-full.onnx
 
+### Debugging on Android
+
+    > cd \Program Files\Unity\Hub\Editor\*\Editor\Data\PlaybackEngines\AndroidPlayer\SDK\platform-tools
+    > adb logcat -c
+    > adb logcat -s Unity
+
 ## Running
 
  1. launch the server.
