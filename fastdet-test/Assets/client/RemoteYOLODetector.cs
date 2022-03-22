@@ -313,9 +313,10 @@ public class RemoteYOLODetector : IObjectDetector {
         }
 
         DateTime t0 = DateTime.Now;
-        var data = new TextureAsTensorData(pixels, 3);
-        using (var tensor = new Tensor(data.shape, data)) {
-            _worker.Execute(tensor);
+        using (var data = new TextureAsTensorData(pixels, 3)) {
+            using (var tensor = new Tensor(data.shape, data)) {
+                _worker.Execute(tensor);
+            }
         }
 
         List<YLObject> cands = new List<YLObject>();
