@@ -109,6 +109,8 @@ class ONNXDetector(Detector):
         providers = ['CPUExecutionProvider']
         if mode == 'cuda':
             providers.insert(0, 'CUDAExecutionProvider')
+        elif mode == 'tensorrt':
+            providers.insert(0, 'TensorrtExecutionProvider')
         self.model = ort.InferenceSession(path, providers=providers)
         self.logger = logging.getLogger()
         self.logger.info(f'load: path={path}, providers={providers}')
