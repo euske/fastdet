@@ -14,17 +14,6 @@ namespace net.sss_consortium.fastdet {
 
 public class RemoteYOLODetector : IObjectDetector {
 
-    internal struct Request {
-        public uint RequestId;
-        public DateTime SentTime;
-        public Rect ClipRect;
-        public override string ToString() {
-            return string.Format(
-                "<Request: RequstId={0}, SentTime={1}, ClipRect={2}>",
-                RequestId, SentTime, ClipRect);
-        }
-    };
-
     // Detection mode.
     public YLDetMode Mode { get; set; }
     // Detection threshold.
@@ -44,7 +33,7 @@ public class RemoteYOLODetector : IObjectDetector {
     private MemoryStream _recv_buf;
     private uint _recv_seqno;
     private uint _send_seqno;
-    private Dictionary<uint, Request> _requests;
+    private Dictionary<uint, YLRequest> _requests;
 
     private static byte[] RTP_DUMMY_PACKET = {
         0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -162,7 +151,7 @@ public class RemoteYOLODetector : IObjectDetector {
         _buffer = new RenderTexture(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, 0);
         _pixels = new Texture2D(_buffer.width, _buffer.height);
         _requestId = 0;
-        _requests = new Dictionary<uint, Request>();
+        _requests = new Dictionary<uint, YLRequest>();
         _results = new List<YLResult>();
         if (yoloModel != null) {
             _model = ModelLoader.Load(yoloModel);
@@ -409,7 +398,7 @@ public class RemoteYOLODetector : IObjectDetector {
             return;
         }
 
-        Request request = new Request {
+        YLRequest request = new YLRequest {
             RequestId = requestId,
             SentTime = DateTime.Now,
             ClipRect = clipRect
@@ -447,7 +436,7 @@ public class RemoteYOLODetector : IObjectDetector {
         // Remove timeout keys from _requests.
         DateTime t = DateTime.Now;
         List<uint> removed = new List<uint>();
-        foreach (Request req in _requests.Values) {
+        foreach (YLRequest req in _requests.Values) {
             if (REQUEST_TIMEOUT < (t - req.SentTime).TotalSeconds) {
                 removed.Add(req.RequestId);
                 logit("Timeout: "+req);
@@ -561,7 +550,7 @@ public class RemoteYOLODetector : IObjectDetector {
             // Parse results.
             uint requestId = parseUInt32(data, 4);
             if (!_requests.ContainsKey(requestId)) return;
-            Request request = _requests[requestId];
+            YLRequest request = _requests[requestId];
             _requests.Remove(requestId);
             Rect clipRect = request.ClipRect;
             uint msec = parseUInt32(data, 8);

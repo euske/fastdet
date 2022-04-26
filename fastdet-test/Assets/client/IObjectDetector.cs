@@ -29,6 +29,20 @@ public struct YLObject {
     }
 }
 
+//  YLRequest
+//
+public struct YLRequest {
+    public uint RequestId;      // Request ID.
+    public DateTime SentTime;   // Timestamp (sent).
+    public Rect ClipRect;       // Clip rectangle.
+
+    public override string ToString() {
+        return string.Format(
+            "<YLRequest: RequstId={0}, SentTime={1}, ClipRect={2}>",
+            RequestId, SentTime, ClipRect);
+    }
+};
+
 //  YLResult
 //
 public struct YLResult {
@@ -52,6 +66,18 @@ public enum YLDetMode {
     ClientOnly,  // YOLO-tiny at client, no networking.
     ServerOnly,  // YOLO-full at server, full image transfer.
     //Mixed,     // YOLO-full at client/server, with autoencoder.
+}
+
+//  YLRequestEventArgs
+//
+public class YLRequestEventArgs : EventArgs {
+    public YLRequest Request { get; set; }
+}
+
+//  YLResultEventArgs
+//
+public class YLResultEventArgs : EventArgs {
+    public YLResult Result { get; set; }
 }
 
 //  IObjectDetector
