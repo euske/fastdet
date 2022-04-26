@@ -72,12 +72,20 @@ public enum YLDetMode {
 //
 public class YLRequestEventArgs : EventArgs {
     public YLRequest Request { get; set; }
+
+    public YLRequestEventArgs(YLRequest request) {
+        Request = request;
+    }
 }
 
 //  YLResultEventArgs
 //
 public class YLResultEventArgs : EventArgs {
     public YLResult Result { get; set; }
+
+    public YLResultEventArgs(YLResult result) {
+        Result = result;
+    }
 }
 
 //  IObjectDetector
@@ -90,7 +98,7 @@ public class YLResultEventArgs : EventArgs {
 //
 //  void Update() {
 //    var image = ...;
-//    var reqid = detector.DetectImage(image);
+//    var request = detector.DetectImage(image);
 //    foreach (YLResult result : detector.GetResults()) {
 //        ...
 //    }
@@ -107,12 +115,15 @@ interface IObjectDetector : IDisposable {
     void Open(string url);
 
     // Sends the image to the queue and returns the request id;
-    uint DetectImage(Texture image);
+    YLRequest DetectImage(Texture image);
     // Gets the results (if any).
     YLResult[] GetResults();
 
     // The number of pending requests.
     int NumPendingRequests { get; }
+
+    // Fired when a request is timed out.
+    event EventHandler<YLRequestEventArgs> RequestTimeout;
 }
 
 } // namespace net.sss_consortium.fastdet

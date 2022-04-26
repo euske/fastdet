@@ -21,8 +21,12 @@ public class DummyDetector : IObjectDetector {
     }
 
     // Sends the image to the queue and returns the request id;
-    public uint DetectImage(Texture image) {
-        return 1;
+    public YLRequest DetectImage(Texture image) {
+        return new YLRequest {
+            RequestId = 1,
+            SentTime = DateTime.Now,
+            ClipRect = Rect.zero,
+        };
     }
 
     // The number of pending requests.
@@ -31,6 +35,8 @@ public class DummyDetector : IObjectDetector {
             return 0;
         }
     }
+
+    public event EventHandler<YLRequestEventArgs> RequestTimeout;
 
     // Gets the results (if any).
     public YLResult[] GetResults() {
