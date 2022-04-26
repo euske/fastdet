@@ -301,6 +301,14 @@ public class RemoteYOLODetector : IObjectDetector {
         }
     }
 
+    public event EventHandler<YLResultEventArgs> ResultObtained;
+
+    protected virtual void OnResultObtained(YLResultEventArgs e) {
+        if (ResultObtained != null) {
+            ResultObtained(this, e);
+        }
+    }
+
     public event EventHandler<YLRequestEventArgs> RequestTimeout;
 
     protected virtual void OnRequestTimedout(YLRequestEventArgs e) {
@@ -441,8 +449,8 @@ public class RemoteYOLODetector : IObjectDetector {
         _results.Add(result1);
     }
 
-    // Gets the results (if any).
-    public YLResult[] GetResults() {
+    // Update the tasks.
+    public void Update() {
         // Remove timeout keys from _requests.
         DateTime t = DateTime.Now;
         List<uint> removed = new List<uint>();
@@ -456,9 +464,10 @@ public class RemoteYOLODetector : IObjectDetector {
         foreach (uint requestId in removed) {
             _requests.Remove(requestId);
         }
-        YLResult[] results = _results.ToArray();
+        foreach (YLResult result in _results) {
+            OnResultObtained(new YLResultEventArgs(result));
+        }
         _results.Clear();
-        return results;
     }
 
     private static void logit(string fmt, params object[] args) {

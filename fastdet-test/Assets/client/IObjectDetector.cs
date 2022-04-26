@@ -92,6 +92,7 @@ public class YLResultEventArgs : EventArgs {
 //
 //  void Start() {
 //    detector = new RemoteYOLODetector();
+//    detector.ResultObtained += resultObtained;
 //    detector.Open("rtsp://192.168.1.1:1234/detect");
 //    //detector.Mode = ServerOnly;
 //  }
@@ -99,9 +100,11 @@ public class YLResultEventArgs : EventArgs {
 //  void Update() {
 //    var image = ...;
 //    var request = detector.DetectImage(image);
-//    foreach (YLResult result : detector.GetResults()) {
-//        ...
-//    }
+//    detector.Update();
+//  }
+//  void resultObtained(object sender, YLResultEventArgs e) {
+//    var result = e.Result;
+//    ...
 //  }
 //
 interface IObjectDetector : IDisposable {
@@ -116,12 +119,15 @@ interface IObjectDetector : IDisposable {
 
     // Sends the image to the queue and returns the request id;
     YLRequest DetectImage(Texture image);
-    // Gets the results (if any).
-    YLResult[] GetResults();
+
+    // Update the tasks.
+    void Update();
 
     // The number of pending requests.
     int NumPendingRequests { get; }
 
+    // Fired when a result is obtained.
+    event EventHandler<YLResultEventArgs> ResultObtained;
     // Fired when a request is timed out.
     event EventHandler<YLRequestEventArgs> RequestTimeout;
 }

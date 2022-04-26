@@ -25,6 +25,7 @@ public class DetectionTest : MonoBehaviour
         rawImage.texture = _webcam;
 
         _detector = new RemoteYOLODetector(yoloModel);
+        _detector.ResultObtained += detector_ResultObtained;
         if (yoloModel != null) {
             _detector.Mode = YLDetMode.ClientOnly;
         }
@@ -95,10 +96,13 @@ public class DetectionTest : MonoBehaviour
                 _detector.DetectImage(_webcam);
             }
         }
-        foreach (YLResult result in _detector.GetResults()) {
-            if (_result == null || _result.Value.SentTime < result.SentTime) {
-                _result = result;
-            }
+        _detector.Update();
+    }
+
+    private void detector_ResultObtained(object sender, YLResultEventArgs e) {
+        YLResult result = e.Result;
+        if (_result == null || _result.Value.SentTime < result.SentTime) {
+            _result = result;
         }
     }
 }

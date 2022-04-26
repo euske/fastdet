@@ -36,10 +36,18 @@ public class DummyDetector : IObjectDetector {
         }
     }
 
+    public event EventHandler<YLResultEventArgs> ResultObtained;
+
+    protected virtual void OnResultObtained(YLResultEventArgs e) {
+        if (ResultObtained != null) {
+            ResultObtained(this, e);
+        }
+    }
+
     public event EventHandler<YLRequestEventArgs> RequestTimeout;
 
-    // Gets the results (if any).
-    public YLResult[] GetResults() {
+    // Update the tasks.
+    public void Update() {
         YLObject obj1 = new YLObject {
             Label = "cat",
             Conf = 1.0f,
@@ -52,7 +60,7 @@ public class DummyDetector : IObjectDetector {
             InferenceTime = 0,
             Objects = new YLObject[] { obj1 },
         };
-        return new YLResult[] { result1 };
+        OnResultObtained(new YLResultEventArgs(result1));
     }
 }
 
