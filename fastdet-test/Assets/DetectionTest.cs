@@ -12,6 +12,7 @@ public class DetectionTest : MonoBehaviour
     public string serverUrl = null;
     public NNModel yoloModel = null;
     public GUIStyle textStyle = new GUIStyle();
+    public GUIStyle boxStyle = new GUIStyle();
 
     private WebCamTexture _webcam;
     private IObjectDetector _detector;
@@ -66,7 +67,7 @@ public class DetectionTest : MonoBehaviour
                     obj1.BBox.width*width,
                     obj1.BBox.height*height);
                 Debug.Log("GUI:"+rect);
-                GUI.Box(rect, obj1.Label);
+                GUI.Box(rect, obj1.Label, boxStyle);
             }
         }
         if (_detector != null) {
@@ -95,7 +96,9 @@ public class DetectionTest : MonoBehaviour
             }
         }
         foreach (YLResult result in _detector.GetResults()) {
-            _result = result;
+            if (_result == null || _result.Value.SentTime < result.SentTime) {
+                _result = result;
+            }
         }
     }
 }
