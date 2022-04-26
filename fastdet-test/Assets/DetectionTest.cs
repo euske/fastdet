@@ -14,8 +14,11 @@ public class DetectionTest : MonoBehaviour
     public GUIStyle textStyle = new GUIStyle();
     public GUIStyle boxStyle = new GUIStyle();
 
+    public float DetectionInterval = 0.1f;
+
     private WebCamTexture _webcam;
     private IObjectDetector _detector;
+    private float _nextDetection = 0;
     private YLResult? _result = null;
 
     void Start()
@@ -92,8 +95,9 @@ public class DetectionTest : MonoBehaviour
     void Update()
     {
         if (16 <= _webcam.width && 16 <= _webcam.height) {
-            if (_detector.NumPendingRequests < 2) {
+            if (_nextDetection < Time.time) {
                 _detector.DetectImage(_webcam);
+                _nextDetection = Time.time + DetectionInterval;
             }
         }
         _detector.Update();
