@@ -96,7 +96,7 @@ public class DetectionTest : MonoBehaviour
     {
         if (16 <= _webcam.width && 16 <= _webcam.height) {
             if (_nextDetection < Time.time) {
-                _detector.DetectImage(_webcam);
+                _detector.ProcessImage(_webcam);
                 _nextDetection = Time.time + DetectionInterval;
             }
         }

@@ -99,7 +99,7 @@ public class YLResultEventArgs : EventArgs {
 //
 //  void Update() {
 //    var image = ...;
-//    var request = detector.DetectImage(image);
+//    var request = detector.ProcessImage(image);
 //    detector.Update();
 //  }
 //  void resultObtained(object sender, YLResultEventArgs e) {
@@ -118,7 +118,7 @@ interface IObjectDetector : IDisposable {
     void Open(string url);
 
     // Sends the image to the queue and returns the request id;
-    YLRequest DetectImage(Texture image);
+    YLRequest ProcessImage(Texture image);
 
     // Update the tasks.
     void Update();

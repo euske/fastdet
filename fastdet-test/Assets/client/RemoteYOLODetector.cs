@@ -252,7 +252,7 @@ public class RemoteYOLODetector : IObjectDetector {
     }
 
     // Sends the image to the queue and returns the request id;
-    public YLRequest DetectImage(Texture image) {
+    public YLRequest ProcessImage(Texture image) {
         Rect clipRect;
         if (image.width < image.height) {
             float ratio = (float)image.width/image.height;
@@ -261,10 +261,10 @@ public class RemoteYOLODetector : IObjectDetector {
             float ratio = (float)image.height/image.width;
             clipRect = new Rect((1-ratio)/2, 0, ratio, 1);
         }
-        return DetectImage(image, clipRect);
+        return ProcessImage(image, clipRect);
     }
 
-    public YLRequest DetectImage(Texture image, Rect clipRect) {
+    public YLRequest ProcessImage(Texture image, Rect clipRect) {
         // Create a Request.
         _requestId++;
         YLRequest request = new YLRequest {

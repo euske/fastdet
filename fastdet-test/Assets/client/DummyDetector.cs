@@ -21,7 +21,7 @@ public class DummyDetector : IObjectDetector {
     }
 
     // Sends the image to the queue and returns the request id;
-    public YLRequest DetectImage(Texture image) {
+    public YLRequest ProcessImage(Texture image) {
         return new YLRequest {
             RequestId = 1,
             SentTime = DateTime.Now,
