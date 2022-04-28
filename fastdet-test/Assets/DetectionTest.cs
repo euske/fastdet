@@ -15,11 +15,12 @@ public class DetectionTest : MonoBehaviour
     public GUIStyle boxStyle = new GUIStyle();
 
     public float DetectionInterval = 0.1f;
+    public float DetectionThreshold = 0.3f;
 
-    private WebCamTexture _webcam;
-    private IObjectDetector _detector;
+    private WebCamTexture _webcam = null;
+    private IObjectDetector _detector = null;
     private float _nextDetection = 0;
-    private YLResult? _result = null;
+    private YLResult _result = null;
 
     void Start()
     {
@@ -27,19 +28,7 @@ public class DetectionTest : MonoBehaviour
         _webcam.Play();
         rawImage.texture = _webcam;
 
-        _detector = new RemoteYOLODetector(yoloModel);
-        _detector.ResultObtained += detector_ResultObtained;
-        if (yoloModel != null) {
-            _detector.Mode = YLDetMode.ClientOnly;
-        }
-        if (serverUrl != null) {
-            try {
-                _detector.Open(serverUrl);
-                _detector.Mode = YLDetMode.ServerOnly;
-            } catch (Exception e) {
-                Debug.LogWarning("connection error: "+e);
-            }
-        }
+        setupNextDetector();
     }
 
     void OnDisable()
@@ -59,12 +48,11 @@ public class DetectionTest : MonoBehaviour
         int width = Screen.width;
         int height = Screen.height;
         if (_result != null) {
-            YLResult result = _result.Value;
-            int total = (int)((result.RecvTime-result.SentTime).TotalSeconds*1000);
-            int infer = (int)(result.InferenceTime*1000);
+            int total = (int)((_result.RecvTime-_result.SentTime).TotalSeconds*1000);
+            int infer = (int)(_result.InferenceTime*1000);
             string text = "Total: "+total+"ms, Inference: "+infer+"ms";
             GUI.Label(new Rect(10,10,300,20), text, textStyle);
-            foreach (YLObject obj1 in result.Objects) {
+            foreach (YLObject obj1 in _result.Objects) {
                 Rect rect = new Rect(
                     obj1.BBox.x*width,
                     obj1.BBox.y*height,
@@ -75,18 +63,14 @@ public class DetectionTest : MonoBehaviour
             }
         }
         if (_detector != null) {
-            if (GUI.Button(new Rect(width-200,20,160,60), _detector.Mode.ToString())) {
-                switch (_detector.Mode) {
-                case YLDetMode.ClientOnly:
-                    _detector.Mode = YLDetMode.ServerOnly;
-                    break;
-                case YLDetMode.ServerOnly:
-                    _detector.Mode = YLDetMode.None;
-                    break;
-                default:
-                    _detector.Mode = YLDetMode.ClientOnly;
-                    break;
-                }
+            string mode = "dummy";
+            if (_detector is RemoteYOLODetector) {
+                mode = "remote";
+            } else if (_detector is LocalYOLODetector) {
+                mode = "local";
+            }
+            if (GUI.Button(new Rect(width-200,20,160,60), mode.ToString())) {
+                setupNextDetector();
                 _result = null;
             }
         }
@@ -94,18 +78,46 @@ public class DetectionTest : MonoBehaviour
 
     void Update()
     {
-        if (16 <= _webcam.width && 16 <= _webcam.height) {
-            if (_nextDetection < Time.time) {
-                _detector.ProcessImage(_webcam);
-                _nextDetection = Time.time + DetectionInterval;
+        if (_detector != null) {
+            if (16 <= _webcam.width && 16 <= _webcam.height) {
+                if (_nextDetection < Time.time) {
+                    _detector.ProcessImage(_webcam, DetectionThreshold);
+                    _nextDetection = Time.time + DetectionInterval;
+                }
+            }
+            _detector.Update();
+        }
+    }
+
+    private void setupNextDetector() {
+        IObjectDetector prev = _detector;
+        _detector?.Dispose();
+        _detector = null;
+
+        if (prev == null || prev is DummyDetector) {
+            if (serverUrl != null) {
+                try {
+                    _detector = new RemoteYOLODetector(serverUrl);
+                } catch (Exception e) {
+                    Debug.LogWarning("connection error: "+e);
+                }
             }
         }
-        _detector.Update();
+        if (_detector == null && !(prev is LocalYOLODetector)) {
+            if (yoloModel != null) {
+                _detector = new LocalYOLODetector(yoloModel);
+            }
+        }
+        if (_detector == null) {
+            _detector = new DummyDetector();
+        }
+        _detector.ResultObtained += detector_ResultObtained;
+        Debug.Log("setupNextDetector: "+_detector);
     }
 
     private void detector_ResultObtained(object sender, YLResultEventArgs e) {
         YLResult result = e.Result;
-        if (_result == null || _result.Value.SentTime < result.SentTime) {
+        if (_result == null || _result.SentTime < result.SentTime) {
             _result = result;
         }
     }

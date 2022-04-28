@@ -7,21 +7,12 @@ namespace net.sss_consortium.fastdet {
 
 public class DummyDetector : IObjectDetector {
 
-    // Detection mode.
-    public YLDetMode Mode { get; set; }
-    // Detection threshold.
-    public float Threshold { get; set; }
-
-    // Initializes the endpoint connection.
-    public void Open(string url) {
-    }
-
     // Uninitializes the endpoint connection.
     public void Dispose() {
     }
 
     // Sends the image to the queue and returns the request id;
-    public YLRequest ProcessImage(Texture image) {
+    public YLRequest ProcessImage(Texture image, float threshold) {
         return new YLRequest {
             RequestId = 1,
             SentTime = DateTime.Now,

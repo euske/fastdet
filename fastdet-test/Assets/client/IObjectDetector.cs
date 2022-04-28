@@ -8,6 +8,7 @@ namespace net.sss_consortium.fastdet {
 //  YLObject
 //
 public struct YLObject {
+
     public string Label;               // Object label.
     public float Conf;                 // Confidence.
     public Rect BBox;                  // Bounding Box.
@@ -31,21 +32,25 @@ public struct YLObject {
 
 //  YLRequest
 //
-public struct YLRequest {
+public class YLRequest {
+
     public uint RequestId;      // Request ID.
     public DateTime SentTime;   // Timestamp (sent).
+    public Vector2 ImageSize;   // Input image size.
     public Rect ClipRect;       // Clip rectangle.
+    public float Threshold;     // Detection threshold.
 
     public override string ToString() {
         return string.Format(
-            "<YLRequest: RequstId={0}, SentTime={1}, ClipRect={2}>",
-            RequestId, SentTime, ClipRect);
+            "<YLRequest: RequstId={0}, SentTime={1}, ImageSize={2}, ClipRect={3}, Threshold={4}>",
+            RequestId, SentTime, ImageSize, ClipRect, Threshold);
     }
 };
 
 //  YLResult
 //
-public struct YLResult {
+public class YLResult {
+
     public uint RequestId;             // Request ID.
     public DateTime SentTime;          // Timestamp (sent).
     public DateTime RecvTime;          // Timestamp (received).
@@ -59,18 +64,10 @@ public struct YLResult {
     }
 }
 
-//  YLDetMode
-//
-public enum YLDetMode {
-    None,        // Just return dummy data.
-    ClientOnly,  // YOLO-tiny at client, no networking.
-    ServerOnly,  // YOLO-full at server, full image transfer.
-    //Mixed,     // YOLO-full at client/server, with autoencoder.
-}
-
 //  YLRequestEventArgs
 //
 public class YLRequestEventArgs : EventArgs {
+
     public YLRequest Request { get; set; }
 
     public YLRequestEventArgs(YLRequest request) {
@@ -81,6 +78,7 @@ public class YLRequestEventArgs : EventArgs {
 //  YLResultEventArgs
 //
 public class YLResultEventArgs : EventArgs {
+
     public YLResult Result { get; set; }
 
     public YLResultEventArgs(YLResult result) {
@@ -91,15 +89,13 @@ public class YLResultEventArgs : EventArgs {
 //  IObjectDetector
 //
 //  void Start() {
-//    detector = new RemoteYOLODetector();
+//    detector = new RemoteYOLODetector("rtsp://192.168.1.1:1234/detect");
 //    detector.ResultObtained += resultObtained;
-//    detector.Open("rtsp://192.168.1.1:1234/detect");
-//    //detector.Mode = ServerOnly;
 //  }
 //
 //  void Update() {
 //    var image = ...;
-//    var request = detector.ProcessImage(image);
+//    var request = detector.ProcessImage(image, threshold);
 //    detector.Update();
 //  }
 //  void resultObtained(object sender, YLResultEventArgs e) {
@@ -109,18 +105,10 @@ public class YLResultEventArgs : EventArgs {
 //
 interface IObjectDetector : IDisposable {
 
-    // Detection mode.
-    YLDetMode Mode { get; set; }
-    // Detection threshold.
-    float Threshold { get; set; }
-
-    // Initializes the endpoint connection.
-    void Open(string url);
-
     // Sends the image to the queue and returns the request id;
-    YLRequest ProcessImage(Texture image);
+    YLRequest ProcessImage(Texture image, float threshold);
 
-    // Update the tasks.
+    // Updates the tasks and fires the events.
     void Update();
 
     // The number of pending requests.
