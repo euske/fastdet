@@ -37,7 +37,7 @@ public class LocalYOLODetector : YOLODetector {
 
     public LocalYOLODetector(NNModel yoloModel) {
         _model = ModelLoader.Load(yoloModel);
-        _worker = _model.CreateWorker();
+        _worker = WorkerFactory.CreateWorker(WorkerFactory.Type.CSharpBurst, _model);
     }
 
     // Uninitializes the endpoint connection.
