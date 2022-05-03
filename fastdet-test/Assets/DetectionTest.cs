@@ -3,6 +3,8 @@
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
 using Unity.Barracuda;
 using net.sss_consortium.fastdet;
 
@@ -13,27 +15,41 @@ public class DetectionTest : MonoBehaviour
     public NNModel yoloModel = null;
     public GUIStyle textStyle = new GUIStyle();
     public GUIStyle boxStyle = new GUIStyle();
+    public ARCameraManager cameraManager = null;
 
     public float DetectionInterval = 0.1f;
     public float DetectionThreshold = 0.3f;
 
     private WebCamTexture _webcam = null;
+    private XRCameraSubsystem _xrcamera = null;
     private IObjectDetector _detector = null;
     private float _nextDetection = 0;
     private YLResult _result = null;
+    private Texture2D _arcamTexture = null;
 
     void Start()
     {
-        _webcam = new WebCamTexture();
-        _webcam.Play();
-        rawImage.texture = _webcam;
+        Debug.Log("AR Session: "+ARSession.state);
+
+        _xrcamera = cameraManager.subsystem;
+        if (_xrcamera != null) {
+            Debug.Log("Using XR Camera.");
+            cameraManager.frameReceived += cameraManager_frameReceived;
+        } else {
+            Debug.Log("Using Webcam.");
+            _webcam = new WebCamTexture();
+            _webcam.Play();
+        }
 
         setupNextDetector();
     }
 
     void OnDisable()
     {
-        _webcam.Stop();
+        _webcam?.Stop();
+        if (_xrcamera != null) {
+            cameraManager.frameReceived -= cameraManager_frameReceived;
+        }
     }
 
     void OnDestroy()
@@ -74,16 +90,29 @@ public class DetectionTest : MonoBehaviour
                 _result = null;
             }
         }
+
+        if (ARSession.state == ARSessionState.SessionTracking) {
+            Transform transform = cameraManager.transform;
+            string s = "AR: "+transform.position+" "+transform.rotation;
+            GUI.Label(new Rect(10,100,300,20), s, textStyle);
+        }
     }
 
     void Update()
     {
         if (_detector != null) {
-            if (16 <= _webcam.width && 16 <= _webcam.height) {
+            Texture input = null;
+            if (_arcamTexture != null) {
+                input = _arcamTexture;
+            } else if (_webcam != null) {
+                input = _webcam;
+            }
+            if (input != null && 16 <= input.width && 16 <= input.height) {
                 if (_nextDetection < Time.time) {
-                    _detector.ProcessImage(_webcam, DetectionThreshold);
+                    _detector.ProcessImage(input, DetectionThreshold);
                     _nextDetection = Time.time + DetectionInterval;
                 }
+                rawImage.texture = input;
             }
             _detector.Update();
         }
@@ -121,4 +150,29 @@ public class DetectionTest : MonoBehaviour
             _result = result;
         }
     }
+
+    private void cameraManager_frameReceived(ARCameraFrameEventArgs eventArgs)
+    {
+        if (!_xrcamera.TryAcquireLatestCpuImage(out XRCpuImage image)) return;
+
+        var format = TextureFormat.RGBA32;
+        if (_arcamTexture == null ||
+            _arcamTexture.width != image.width ||
+            _arcamTexture.height != image.height) {
+            _arcamTexture = new Texture2D(image.width, image.height, format, false);
+        }
+
+        //XRCpuImage.Transformation transformation = XRCpuImage.Transformation.MirrorY;
+        XRCpuImage.Transformation transformation = XRCpuImage.Transformation.MirrorX;
+        var conversionParams = new XRCpuImage.ConversionParams(image, format, transformation);
+
+        var rawTextureData = _arcamTexture.GetRawTextureData<byte>();
+        try {
+            image.Convert(conversionParams, rawTextureData);
+        } finally {
+            image.Dispose();
+        }
+        _arcamTexture.Apply();
+    }
+
 }
