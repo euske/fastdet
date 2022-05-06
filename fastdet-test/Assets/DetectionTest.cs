@@ -35,10 +35,13 @@ public class DetectionTest : MonoBehaviour
         if (_xrcamera != null) {
             Debug.Log("Using XR Camera.");
             cameraManager.frameReceived += cameraManager_frameReceived;
+            rawImage.enabled = false;
         } else {
             Debug.Log("Using Webcam.");
             _webcam = new WebCamTexture();
             _webcam.Play();
+            rawImage.enabled = true;
+            rawImage.texture = _webcam;
         }
 
         setupNextDetector();
@@ -112,7 +115,6 @@ public class DetectionTest : MonoBehaviour
                     _detector.ProcessImage(input, DetectionThreshold);
                     _nextDetection = Time.time + DetectionInterval;
                 }
-                rawImage.texture = input;
             }
             _detector.Update();
         }

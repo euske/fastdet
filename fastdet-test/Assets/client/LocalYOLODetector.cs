@@ -15,6 +15,8 @@ public class LocalYOLODetector : YOLODetector {
     private Model _model;
     private IWorker _worker;
 
+    private static WorkerFactory.Type WORKER_TYPE = WorkerFactory.Type.CSharpBurst;
+
     private static Vector2[] ANCHORS_FULL = new Vector2[] {
         new Vector2(116, 90),
         new Vector2(156, 198),
@@ -37,7 +39,7 @@ public class LocalYOLODetector : YOLODetector {
 
     public LocalYOLODetector(NNModel yoloModel) {
         _model = ModelLoader.Load(yoloModel);
-        _worker = WorkerFactory.CreateWorker(WorkerFactory.Type.CSharpBurst, _model);
+        _worker = WorkerFactory.CreateWorker(WORKER_TYPE, _model);
     }
 
     // Uninitializes the endpoint connection.
