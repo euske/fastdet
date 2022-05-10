@@ -95,7 +95,7 @@ public class YLResultEventArgs : EventArgs {
 //
 //  void Update() {
 //    var image = ...;
-//    var request = detector.ProcessImage(image, threshold);
+//    var request = detector.ProcessImage(image, area, threshold);
 //    detector.Update();
 //  }
 //  void resultObtained(object sender, YLResultEventArgs e) {
