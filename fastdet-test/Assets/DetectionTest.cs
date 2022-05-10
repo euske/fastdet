@@ -112,7 +112,15 @@ public class DetectionTest : MonoBehaviour
             }
             if (input != null && 16 <= input.width && 16 <= input.height) {
                 if (_nextDetection < Time.time) {
-                    _detector.ProcessImage(input, DetectionThreshold);
+                    Rect area;
+                    if (input.width < input.height) {
+                        float ratio = (float)input.width/input.height;
+                        area = new Rect(0, (1-ratio)/2, 1, ratio);
+                    } else {
+                        float ratio = (float)input.height/input.width;
+                        area = new Rect((1-ratio)/2, 0, ratio, 1);
+                    }
+                    _detector.ProcessImage(input, area, DetectionThreshold);
                     _nextDetection = Time.time + DetectionInterval;
                 }
             }

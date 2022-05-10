@@ -126,21 +126,9 @@ public abstract class YOLODetector : IObjectDetector {
     }
 
     // Sends the image to the queue and returns the request id;
-    public YLRequest ProcessImage(Texture image, float threshold) {
-        Rect clipRect;
-        if (image.width < image.height) {
-            float ratio = (float)image.width/image.height;
-            clipRect = new Rect(0, (1-ratio)/2, 1, ratio);
-        } else {
-            float ratio = (float)image.height/image.width;
-            clipRect = new Rect((1-ratio)/2, 0, ratio, 1);
-        }
-        return ProcessImage(image, clipRect, threshold);
-    }
-
-    public YLRequest ProcessImage(Texture image, Rect clipRect, float threshold) {
+    public YLRequest ProcessImage(Texture image, Rect detectArea, float threshold) {
         // Resize the texture.
-        Graphics.Blit(image, _buffer, clipRect.size, clipRect.position);
+        Graphics.Blit(image, _buffer, detectArea.size, detectArea.position);
         // Convert the texture.
         RenderTexture temp = RenderTexture.active;
         RenderTexture.active = _buffer;
@@ -153,7 +141,7 @@ public abstract class YOLODetector : IObjectDetector {
             RequestId = _requestId,
             SentTime = DateTime.Now,
             ImageSize = new Vector2(_pixels.width, _pixels.height),
-            ClipRect = clipRect,
+            DetectArea = detectArea,
             Threshold = threshold,
         };
         performDetection(request, _pixels);

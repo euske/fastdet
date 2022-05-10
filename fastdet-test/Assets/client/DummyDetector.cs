@@ -12,11 +12,11 @@ public class DummyDetector : IObjectDetector {
     }
 
     // Sends the image to the queue and returns the request id;
-    public YLRequest ProcessImage(Texture image, float threshold) {
+    public YLRequest ProcessImage(Texture image, Rect detectArea, float threshold) {
         return new YLRequest {
             RequestId = 1,
             SentTime = DateTime.Now,
-            ClipRect = Rect.zero,
+            DetectArea = Rect.zero,
         };
     }
 

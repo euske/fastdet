@@ -218,7 +218,7 @@ public class RemoteYOLODetector : YOLODetector {
             uint requestId = parseUInt32(data, 4);
             YLRequest request = removeRequest(requestId);
             if (request == null) return;
-            Rect clipRect = request.ClipRect;
+            Rect detectArea = request.DetectArea;
             uint msec = parseUInt32(data, 8);
             uint length = parseUInt32(data, 12);
             List<YLObject> objs = new List<YLObject>();
@@ -236,10 +236,10 @@ public class RemoteYOLODetector : YOLODetector {
                 obj1.Label = LABELS[klass];
                 obj1.Conf = conf / 255f;
                 obj1.BBox = new Rect(
-                    clipRect.x+(x/request.ImageSize.x)*clipRect.width,
-                    clipRect.y+(y/request.ImageSize.y)*clipRect.height,
-                    (w/request.ImageSize.x)*clipRect.width,
-                    (h/request.ImageSize.y)*clipRect.height);
+                    detectArea.x+(x/request.ImageSize.x)*detectArea.width,
+                    detectArea.y+(y/request.ImageSize.y)*detectArea.height,
+                    (w/request.ImageSize.x)*detectArea.width,
+                    (h/request.ImageSize.y)*detectArea.height);
                 objs.Add(obj1);
             }
             YLResult result1 = new YLResult() {

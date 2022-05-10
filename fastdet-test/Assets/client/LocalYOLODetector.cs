@@ -62,7 +62,7 @@ public class LocalYOLODetector : YOLODetector {
             }
         }
 
-        Rect clipRect = request.ClipRect;
+        Rect detectArea = request.DetectArea;
         List<YLObject> cands = new List<YLObject>();
         List<string> outputs = _model.outputs;
         Vector2[] anchors = (outputs.Count == 3)? ANCHORS_FULL : ANCHORS_TINY;
@@ -95,10 +95,10 @@ public class LocalYOLODetector : YOLODetector {
                                 Label = LABELS[maxIndex],
                                 Conf = conf,
                                 BBox = new Rect(
-                                    clipRect.x+(x-w/2)*clipRect.width,
-                                    clipRect.y+(y-h/2)*clipRect.height,
-                                    w*clipRect.width,
-                                    h*clipRect.height),
+                                    detectArea.x+(x-w/2)*detectArea.width,
+                                    detectArea.y+(y-h/2)*detectArea.height,
+                                    w*detectArea.width,
+                                    h*detectArea.height),
                             };
                             cands.Add(obj1);
                         }

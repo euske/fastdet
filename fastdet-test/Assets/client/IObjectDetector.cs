@@ -37,13 +37,13 @@ public class YLRequest {
     public uint RequestId;      // Request ID.
     public DateTime SentTime;   // Timestamp (sent).
     public Vector2 ImageSize;   // Input image size.
-    public Rect ClipRect;       // Clip rectangle.
+    public Rect DetectArea;     // Detection area.
     public float Threshold;     // Detection threshold.
 
     public override string ToString() {
         return string.Format(
-            "<YLRequest: RequstId={0}, SentTime={1}, ImageSize={2}, ClipRect={3}, Threshold={4}>",
-            RequestId, SentTime, ImageSize, ClipRect, Threshold);
+            "<YLRequest: RequstId={0}, SentTime={1}, ImageSize={2}, DetectArea={3}, Threshold={4}>",
+            RequestId, SentTime, ImageSize, DetectArea, Threshold);
     }
 };
 
@@ -106,7 +106,7 @@ public class YLResultEventArgs : EventArgs {
 interface IObjectDetector : IDisposable {
 
     // Sends the image to the queue and returns the request id;
-    YLRequest ProcessImage(Texture image, float threshold);
+    YLRequest ProcessImage(Texture image, Rect detectArea, float threshold);
 
     // Updates the tasks and fires the events.
     void Update();
