@@ -59,7 +59,7 @@ UDP 経由で通信可能である必要がある。(UDP を使っているが�
     Unity 上における画像は通常 Texture オブジェクトとして扱われるので、
     カメラから Texture オブジェクトを取得し、ProcessImage メソッドを呼ぶ。
     このとき、画像中の認識範囲 (detectArea) および物体認識のしきい値
-    (threshold) を指定する。
+    (threshold) を指定する。確信度がしきい値以下の物体は結果に含まれない。
 
     void Update() {
         var image = ...;
@@ -92,6 +92,39 @@ UDP 経由で通信可能である必要がある。(UDP を使っているが�
         ...
     }
 
-    注意: 認識結果は YLObject の配列である。各物体には、種類 (文字列によって表される)
+    注意: 認識結果は YLResultクラスとして提供され、ここには各物体をあらわす
+          YLObject の配列が格納されている。各物体には、種類 (文字列によって表される)
           および矩形 (Rect型) が付与されている。矩形は認識画像 (Texture) の
           uv座標系 ([0,1]) で表現される。
+
+
+## 構造体の各フィールド解説
+
+    // YLObject: 認識されたひとつの物体に関する情報を保持する。
+    struct YLObject {
+
+        string Label;  // 物体の種類をあらわす文字列。(例: "car", "person" など)
+        float Conf;    // 確信度。[0.0, 1.0] の範囲で、1.0 がもっとも確信度が高い。
+        Rect BBox;     // 画像中における物体の矩形。認識画像中のuv座標系で表現される。
+    }
+
+    // YLRequest: 認識エンジンに送られたリクエスト内容を保持する。
+    class YLRequest {
+
+        uint RequestId;     // リクエストID。
+        DateTime SentTime;  // リクエストが送られた時刻。
+        Vector2 ImageSize;  // 認識画像のサイズ。
+        Rect DetectArea;    // 認識する部分。
+        float Threshold;    // しきい値。(これ以下の確信度は結果に含まれない)
+
+    };
+
+    // YLResult: 認識エンジンから返された結果を保持する。
+    class YLResult {
+
+        uint RequestId;       // リクエストID。
+        DateTime SentTime;    // リクエストが送られた時刻。
+        DateTime RecvTime;    // 結果が返された時刻。
+        float InferenceTime;  // ニューラルネットワークの処理にかかった時間 (秒)。
+        YLObject[] Objects;   // 認識された物体のリスト。
+    }
