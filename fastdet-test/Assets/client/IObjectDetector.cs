@@ -9,9 +9,9 @@ namespace net.sss_consortium.fastdet {
 //
 public struct YLObject {
 
-    public string Label;               // Object label.
-    public float Conf;                 // Confidence.
-    public Rect BBox;                  // Bounding Box.
+    public string Label { get; set; }  // Object label.
+    public float Conf { get; set; }    // Confidence.
+    public Rect BBox { get; set; }     // Bounding Box.
 
     public override string ToString() {
         return string.Format(
@@ -34,11 +34,11 @@ public struct YLObject {
 //
 public class YLRequest {
 
-    public uint RequestId;      // Request ID.
-    public DateTime SentTime;   // Timestamp (sent).
-    public Vector2 ImageSize;   // Input image size.
-    public Rect DetectArea;     // Detection area.
-    public float Threshold;     // Detection threshold.
+    public uint RequestId { get; set; }     // Request ID.
+    public DateTime SentTime { get; set; }  // Timestamp (sent).
+    public Vector2 ImageSize { get; set; }  // Input image size.
+    public Rect DetectArea { get; set; }    // Detection area.
+    public float Threshold { get; set; }    // Detection threshold.
 
     public override string ToString() {
         return string.Format(
@@ -51,11 +51,11 @@ public class YLRequest {
 //
 public class YLResult {
 
-    public uint RequestId;             // Request ID.
-    public DateTime SentTime;          // Timestamp (sent).
-    public DateTime RecvTime;          // Timestamp (received).
-    public float InferenceTime;        // Inference time (in second).
-    public YLObject[] Objects;         // List of detected objects.
+    public uint RequestId { get; set; }       // Request ID.
+    public DateTime SentTime { get; set; }    // Timestamp (sent).
+    public DateTime RecvTime { get; set; }    // Timestamp (received).
+    public float InferenceTime { get; set; }  // Inference time (in second).
+    public YLObject[] Objects { get; set; }   // List of detected objects.
 
     public override string ToString() {
         return string.Format(
@@ -68,7 +68,7 @@ public class YLResult {
 //
 public class YLRequestEventArgs : EventArgs {
 
-    public YLRequest Request { get; set; }
+    public YLRequest Request { get; set; }  // Request sent.
 
     public YLRequestEventArgs(YLRequest request) {
         Request = request;
@@ -79,7 +79,7 @@ public class YLRequestEventArgs : EventArgs {
 //
 public class YLResultEventArgs : EventArgs {
 
-    public YLResult Result { get; set; }
+    public YLResult Result { get; set; }  // Result received.
 
     public YLResultEventArgs(YLResult result) {
         Result = result;
