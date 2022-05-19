@@ -96,7 +96,7 @@ public class DetectionTest : MonoBehaviour
 
         if (ARSession.state == ARSessionState.SessionTracking) {
             Transform transform = cameraManager.transform;
-            string s = "AR: "+transform.position+" "+transform.rotation;
+            string s = "AR Camera: "+transform.position;
             GUI.Label(new Rect(10,100,300,20), s, textStyle);
         }
     }
