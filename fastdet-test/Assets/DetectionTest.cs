@@ -15,6 +15,7 @@ public class DetectionTest : MonoBehaviour
     public NNModel yoloModel = null;
     public GUIStyle textStyle = new GUIStyle();
     public GUIStyle boxStyle = new GUIStyle();
+    public Camera camera = null;
     public ARCameraManager cameraManager = null;
 
     public float DetectionInterval = 0.1f;
@@ -152,6 +153,15 @@ public class DetectionTest : MonoBehaviour
         }
         _detector.ResultObtained += detector_ResultObtained;
         Debug.Log("setupNextDetector: "+_detector);
+    }
+
+    private Vector3 getScreenPoint(float x, float y) {
+        Vector3 p = new Vector3(Screen.width*x, Screen.height*y, 0);
+        Ray ray = camera.ScreenPointToRay(p);
+        RaycastHit hit;
+        Physics.Raycast(ray, out hit);
+        //Debug.Log("hit: "+hit.collider+", "+hit.point);
+        return hit.point;
     }
 
     private void detector_ResultObtained(object sender, YLResultEventArgs e) {
