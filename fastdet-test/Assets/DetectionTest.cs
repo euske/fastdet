@@ -1,6 +1,7 @@
 //  DetectionTest.cs
 //
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
@@ -16,6 +17,8 @@ public class DetectionTest : MonoBehaviour
     public GUIStyle textStyle = new GUIStyle();
     public GUIStyle boxStyle = new GUIStyle();
     public Camera camera = null;
+    public Transform origin = null;
+    public GameObject objPrefab = null;
     public ARCameraManager cameraManager = null;
 
     public float DetectionInterval = 0.1f;
@@ -27,6 +30,7 @@ public class DetectionTest : MonoBehaviour
     private float _nextDetection = 0;
     private YLResult _result = null;
     private Texture2D _arcamTexture = null;
+    private List<GameObject> _objRects = null;
 
     void Start()
     {
@@ -37,6 +41,7 @@ public class DetectionTest : MonoBehaviour
             Debug.Log("Using XR Camera.");
             cameraManager.frameReceived += cameraManager_frameReceived;
             rawImage.enabled = false;
+            _objRects = new List<GameObject>();
         } else {
             Debug.Log("Using Webcam.");
             _webcam = new WebCamTexture();
@@ -78,7 +83,6 @@ public class DetectionTest : MonoBehaviour
                     obj1.BBox.y*height,
                     obj1.BBox.width*width,
                     obj1.BBox.height*height);
-                Debug.Log("GUI:"+rect);
                 GUI.Box(rect, obj1.Label, boxStyle);
             }
         }
@@ -123,6 +127,7 @@ public class DetectionTest : MonoBehaviour
                     }
                     _detector.ProcessImage(input, area, DetectionThreshold);
                     _nextDetection = Time.time + DetectionInterval;
+                    Debug.Log("nextDetection:"+_nextDetection);
                 }
             }
             _detector.Update();
@@ -156,18 +161,47 @@ public class DetectionTest : MonoBehaviour
     }
 
     private Vector3 getScreenPoint(float x, float y) {
-        Vector3 p = new Vector3(Screen.width*x, Screen.height*y, 0);
+        Vector3 p = new Vector3(Screen.width*x, Screen.height*(1-y), 0);
         Ray ray = camera.ScreenPointToRay(p);
         RaycastHit hit;
         Physics.Raycast(ray, out hit);
         //Debug.Log("hit: "+hit.collider+", "+hit.point);
-        return hit.point;
+        return origin.TransformPoint(hit.point);
     }
 
     private void detector_ResultObtained(object sender, YLResultEventArgs e) {
         YLResult result = e.Result;
         if (_result == null || _result.SentTime < result.SentTime) {
             _result = result;
+            if (_result != null && _objRects != null) {
+                int i = 0;
+                while (i < _result.Objects.Length) {
+                    YLObject obj1 = _result.Objects[i];
+                    GameObject gameobj1;
+                    if (i < _objRects.Count) {
+                        gameobj1 = _objRects[i];
+                    } else {
+                        gameobj1 = Instantiate(objPrefab);
+                        _objRects.Add(gameobj1);
+                    }
+                    Vector3[] vertices = new Vector3[] {
+                        getScreenPoint(obj1.BBox.xMin, obj1.BBox.yMin),
+                        getScreenPoint(obj1.BBox.xMin, obj1.BBox.yMax),
+                        getScreenPoint(obj1.BBox.xMax, obj1.BBox.yMin),
+                        getScreenPoint(obj1.BBox.xMax, obj1.BBox.yMax),
+                    };
+                    Mesh mesh = new Mesh();
+                    mesh.vertices = vertices;
+                    mesh.triangles = new int[] { 0, 2, 1, 2, 3, 1 };
+                    (gameobj1.GetComponent(typeof(MeshFilter)) as MeshFilter).mesh = mesh;
+                    gameobj1.SetActive(true);
+                    i++;
+                }
+                while (i < _objRects.Count) {
+                    _objRects[i].SetActive(false);
+                    i++;
+                }
+            }
         }
     }
 
