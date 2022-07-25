@@ -329,10 +329,10 @@ class RTSPServer(TCPServer):
 def main(argv):
     import getopt
     def usage():
-        print(f'usage: {argv[0]} [-d] [-o dbgout] [-m mode] [-s port] [-t interval] [onnx]')
+        print(f'usage: {argv[0]} [-d] [-o dbgout] [-m mode] [-s port] [-t interval] [-c num_classes] [onnx]')
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'do:m:s:t:')
+        (opts, args) = getopt.getopt(argv[1:], 'do:m:s:t:c:')
     except getopt.GetoptError:
         return usage()
     level = logging.INFO
@@ -340,17 +340,19 @@ def main(argv):
     server_port = 10000
     interval = 0.1
     dbgout = None
+    num_classes = 80
     for (k, v) in opts:
         if k == '-d': level = logging.DEBUG
         elif k == '-o': dbgout = v
         elif k == '-m': mode = v
         elif k == '-s': server_port = int(v)
         elif k == '-t': interval = float(v)
+        elif k == '-c': num_classes = int(v)
     logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=level)
 
     # Server mode.
     if args:
-        detector = ONNXDetector(args[0], mode=mode, dbgout=dbgout)
+        detector = ONNXDetector(args[0], mode=mode, num_classes=num_classes, dbgout=dbgout)
     else:
         detector = DummyDetector(dbgout=dbgout)
     loop = EventLoop()

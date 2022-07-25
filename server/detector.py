@@ -63,10 +63,9 @@ def soft_nms(objs, threshold):
 ##
 class Detector:
 
-    IMAGE_SIZE = (416,416)
-    NUM_CLASS = 80
-
-    def __init__(self, dbgout=None):
+    def __init__(self, image_size=(416,416), num_classes=80, dbgout=None):
+        self.image_size = image_size
+        self.num_classes = num_classes
         self.dbgout = dbgout
         return
 
@@ -80,7 +79,7 @@ class DummyDetector(Detector):
 
     def perform(self, data, threshold=0.3):
         super().perform(data)
-        (width, height) = self.IMAGE_SIZE
+        (width, height) = self.image_size
         klass = 16              # cat
         conf = 1.0
         x = 0.5*width
@@ -103,8 +102,8 @@ class ONNXDetector(Detector):
             ),
     }
 
-    def __init__(self, path, mode=None, dbgout=None):
-        super().__init__(dbgout=dbgout)
+    def __init__(self, path, mode=None, num_classes=80, dbgout=None):
+        super().__init__(num_classes=num_classes, dbgout=dbgout)
         import onnxruntime as ort
         providers = ['CPUExecutionProvider']
         if mode == 'cuda':
@@ -119,9 +118,9 @@ class ONNXDetector(Detector):
     def perform(self, data, threshold=0.3):
         super().perform(data)
         from PIL import Image
-        (width, height) = self.IMAGE_SIZE
+        (width, height) = self.image_size
         img = Image.open(io.BytesIO(data))
-        if img.size != self.IMAGE_SIZE:
+        if img.size != self.image_size:
             raise ValueError('invalid image size')
         a = (np.array(img).reshape(1,height,width,3)/255).astype(np.float32)
         outputs = self.model.run(None, {'input': a})
@@ -137,20 +136,20 @@ class ONNXDetector(Detector):
         return results
 
     def process_yolo(self, anchors, m, threshold=0.3):
-        (width, height) = self.IMAGE_SIZE
+        (width, height) = self.image_size
         (rows,cols,_) = m.shape
         a = []
         for (y0,row) in enumerate(m):
             for (x0,col) in enumerate(row):
                 for (k,(ax,ay)) in enumerate(anchors):
-                    b = (5+self.NUM_CLASS) * k
+                    b = (5+self.num_classes) * k
                     conf = sigmoid(col[b+4])
                     if conf < threshold: continue
                     x = (x0 + sigmoid(col[b+0])) / cols
                     y = (y0 + sigmoid(col[b+1])) / rows
                     w = ax * exp(col[b+2]) / width
                     h = ay * exp(col[b+3]) / height
-                    mi = np.argmax(col[b+5:b+5+self.NUM_CLASS])
+                    mi = np.argmax(col[b+5:b+5+self.num_classes])
                     conf *= sigmoid(col[b+5+mi])
                     if conf < threshold: continue
                     a.append(YOLOObject(mi+1, conf, (x-w/2, y-h/2, w, h)))
@@ -160,7 +159,7 @@ class ONNXDetector(Detector):
 def main(argv):
     args = argv[1:]
     path = args.pop(0)
-    detector = ONNXDetector(path)
+    detector = ONNXDetector(path, num_classes=9)
     for path in args:
         with open(path, 'rb') as fp:
             data = fp.read()
