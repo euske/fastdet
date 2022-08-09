@@ -69,7 +69,7 @@ class Detector:
         self.dbgout = dbgout
         return
 
-    def perform(self, data):
+    def perform(self, data, threshold=0.1):
         if self.dbgout is not None:
             with open(self.dbgout, 'wb') as fp:
                 fp.write(data)
@@ -77,7 +77,7 @@ class Detector:
 
 class DummyDetector(Detector):
 
-    def perform(self, data, threshold=0.3):
+    def perform(self, data, threshold=0.1):
         super().perform(data)
         (width, height) = self.image_size
         klass = 16              # cat
@@ -115,7 +115,7 @@ class ONNXDetector(Detector):
         self.logger.info(f'load: path={path}, providers={providers}')
         return
 
-    def perform(self, data, threshold=0.3):
+    def perform(self, data, threshold=0.1):
         super().perform(data)
         from PIL import Image
         (width, height) = self.image_size
@@ -135,7 +135,7 @@ class ONNXDetector(Detector):
         self.logger.info(f'perform: results={results}')
         return results
 
-    def process_yolo(self, anchors, m, threshold=0.3):
+    def process_yolo(self, anchors, m, threshold=0.1):
         (width, height) = self.image_size
         (rows,cols,_) = m.shape
         a = []
@@ -157,15 +157,31 @@ class ONNXDetector(Detector):
 
 # main
 def main(argv):
-    args = argv[1:]
+    import getopt
+    def usage():
+        print(f'usage: {argv[0]} [-m mode] [-c num_classes] [-t threshold] onnx images ...')
+        return 100
+    try:
+        (opts, args) = getopt.getopt(argv[1:], 'm:c:t:')
+    except getopt.GetoptError:
+        return usage()
+    mode = None
+    num_classes = 80
+    threshold = 0.1
+    for (k, v) in opts:
+        if k == '-m': mode = v
+        elif k == '-c': num_classes = int(v)
+        elif k == '-t': threshold = float(v)
+    if not args: return usage()
     path = args.pop(0)
-    detector = ONNXDetector(path, num_classes=9)
+    detector = ONNXDetector(path, mode=mode, num_classes=num_classes)
     for path in args:
         with open(path, 'rb') as fp:
             data = fp.read()
         t0 = time.time()
-        result = detector.perform(data)
+        result = detector.perform(data, threshold=threshold)
         dt = time.time() - t0
         print(dt, result)
     return
+
 if __name__ == '__main__': sys.exit(main(sys.argv))
