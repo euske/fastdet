@@ -28,7 +28,7 @@ public class RemoteYOLODetector : YOLODetector {
     };
 
     // Initializes the endpoint connection.
-    public RemoteYOLODetector(string url) {
+    public RemoteYOLODetector(string url, string[] labels) : base(labels) {
         // Parse the url.
         int i;
         if (!url.StartsWith("rtsp://")) {
@@ -226,14 +226,14 @@ public class RemoteYOLODetector : YOLODetector {
                 // Parse one object.
                 uint i = 16+n;
                 int klass = data[i];
-                if (klass == 0 || LABELS.Length <= klass) continue;
+                if (klass == 0 || Labels.Length <= klass) continue;
                 float conf = data[i+1];
                 float x = parseInt16(data, i+2);
                 float y = parseInt16(data, i+4);
                 float w = parseInt16(data, i+6);
                 float h = parseInt16(data, i+8);
                 YLObject obj1 = new YLObject();
-                obj1.Label = LABELS[klass];
+                obj1.Label = Labels[klass];
                 obj1.Conf = conf / 255f;
                 obj1.BBox = new Rect(
                     detectArea.x+(x/request.ImageSize.x)*detectArea.width,

@@ -13,13 +13,28 @@ public abstract class YOLODetector : IObjectDetector {
     private uint _requestId;
     private Dictionary<uint, YLRequest> _requests;
     private List<YLResult> _results;
+    private string[] _labels;
 
     private const float REQUEST_TIMEOUT = 3f;
 
     private const int IMAGE_SIZE_WIDTH = 416;
     private const int IMAGE_SIZE_HEIGHT = 416;
 
-    protected static string[] LABELS = {
+    public static string[] RSU_LABELS = {
+        // RSU dataset labels.
+        null,                   // UNDEFINED
+        "person",
+        "car",
+        "bicycle",
+        "camera",
+        "a60g",
+        "rsubox",
+        "asub6",
+        "ammw",
+        "autocar",
+    };
+
+    public static string[] COCO_LABELS = {
         // COCO dataset labels.
         null,                   // UNDEFINED
         "person",
@@ -104,12 +119,13 @@ public abstract class YOLODetector : IObjectDetector {
         "toothbrush",
     };
 
-    public YOLODetector() {
+    public YOLODetector(string[] labels) {
         _buffer = new RenderTexture(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, 0);
         _pixels = new Texture2D(_buffer.width, _buffer.height);
         _requestId = 0;
         _requests = new Dictionary<uint, YLRequest>();
         _results = new List<YLResult>();
+        _labels = labels;
     }
 
     // Uninitializes the endpoint connection.
@@ -163,6 +179,12 @@ public abstract class YOLODetector : IObjectDetector {
 
     protected void addResult(YLResult result) {
         _results.Add(result);
+    }
+
+    public string[] Labels {
+        get {
+            return _labels;
+        }
     }
 
     // The number of pending requests.

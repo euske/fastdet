@@ -142,7 +142,7 @@ public class DetectionTest : MonoBehaviour
         if (prev == null || prev is DummyDetector) {
             if (serverUrl != null) {
                 try {
-                    _detector = new RemoteYOLODetector(serverUrl);
+                    _detector = new RemoteYOLODetector(serverUrl, YOLODetector.COCO_LABELS);
                 } catch (Exception e) {
                     Debug.LogWarning("connection error: "+e);
                 }
@@ -150,7 +150,7 @@ public class DetectionTest : MonoBehaviour
         }
         if (_detector == null && !(prev is LocalYOLODetector)) {
             if (yoloModel != null) {
-                _detector = new LocalYOLODetector(yoloModel);
+                _detector = new LocalYOLODetector(yoloModel, YOLODetector.COCO_LABELS);
             }
         }
         if (_detector == null) {

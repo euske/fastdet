@@ -37,7 +37,7 @@ public class LocalYOLODetector : YOLODetector {
         new Vector2(37, 58),
     };
 
-    public LocalYOLODetector(NNModel yoloModel) {
+    public LocalYOLODetector(NNModel yoloModel, string[] labels) : base(labels) {
         _model = ModelLoader.Load(yoloModel);
         _worker = WorkerFactory.CreateWorker(WORKER_TYPE, _model);
     }
@@ -73,7 +73,7 @@ public class LocalYOLODetector : YOLODetector {
                 for (int y0 = 0; y0 < rows; y0++) {
                     for (int x0 = 0; x0 < cols; x0++) {
                         for (int k = 0; k < 3; k++) {
-                            int b = (5+LABELS.Length-1) * k;
+                            int b = (5+Labels.Length-1) * k;
                             float conf = Sigmoid(t[0,y0,x0,b+4]);
                             if (conf < request.Threshold) continue;
                             Vector2 anchor = anchors[z*3+k];
@@ -83,7 +83,7 @@ public class LocalYOLODetector : YOLODetector {
                             float h = (anchor.y * Mathf.Exp(t[0,y0,x0,b+3])) / pixels.height;
                             float maxProb = -1;
                             int maxIndex = 0;
-                            for (int index = 1; index < LABELS.Length; index++) {
+                            for (int index = 1; index < Labels.Length; index++) {
                                 float p = t[0,y0,x0,b+5+index-1];
                                 if (maxProb < p) {
                                     maxProb = p; maxIndex = index;
@@ -92,7 +92,7 @@ public class LocalYOLODetector : YOLODetector {
                             conf *= Sigmoid(maxProb);
                             if (conf < request.Threshold) continue;
                             YLObject obj1 = new YLObject {
-                                Label = LABELS[maxIndex],
+                                Label = Labels[maxIndex],
                                 Conf = conf,
                                 BBox = new Rect(
                                     detectArea.x+(x-w/2)*detectArea.width,
