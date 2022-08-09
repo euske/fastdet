@@ -123,10 +123,12 @@ class ONNXDetector(Detector):
         if img.size != self.image_size:
             raise ValueError('invalid image size')
         a = (np.array(img).reshape(1,height,width,3)/255).astype(np.float32)
+        a = a.transpose(0,3,1,2) # [N,H,W,C] -> [N,C,H,W]
         outputs = self.model.run(None, {'input': a})
         aas = self.ANCHORS[len(outputs)]
         objs = []
         for (anchors,output) in zip(aas, outputs):
+            output = output.transpose(0,2,3,1) # [N,C,H,W] -> [N,H,W,C]
             objs.extend(self.process_yolo(anchors, output[0], threshold=threshold))
         objs = soft_nms(objs, threshold=threshold)
         results = [ (obj.klass, obj.conf,
