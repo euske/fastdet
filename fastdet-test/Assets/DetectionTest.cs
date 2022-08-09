@@ -12,7 +12,8 @@ using net.sss_consortium.fastdet;
 public class DetectionTest : MonoBehaviour
 {
     public RawImage rawImage = null;
-    public string serverUrl = null;
+    public string serverUrlCOCO = null;
+    public string serverUrlRSU = null;
     public NNModel yoloModel = null;
     public GUIStyle textStyle = new GUIStyle();
     public GUIStyle boxStyle = new GUIStyle();
@@ -22,7 +23,7 @@ public class DetectionTest : MonoBehaviour
     public ARCameraManager cameraManager = null;
 
     public float DetectionInterval = 0.1f;
-    public float DetectionThreshold = 0.3f;
+    public float DetectionThreshold = 0.05f;
 
     private WebCamTexture _webcam = null;
     private XRCameraSubsystem _xrcamera = null;
@@ -31,6 +32,9 @@ public class DetectionTest : MonoBehaviour
     private YLResult _result = null;
     private Texture2D _arcamTexture = null;
     private List<GameObject> _objRects = null;
+
+    private string _curMode = null;
+    private string[] MODES = { "dummy", "local", "coco", "rsu" };
 
     void Start()
     {
@@ -86,14 +90,8 @@ public class DetectionTest : MonoBehaviour
                 GUI.Box(rect, obj1.Label, boxStyle);
             }
         }
-        if (_detector != null) {
-            string mode = "dummy";
-            if (_detector is RemoteYOLODetector) {
-                mode = "remote";
-            } else if (_detector is LocalYOLODetector) {
-                mode = "local";
-            }
-            if (GUI.Button(new Rect(width-200,20,160,60), mode.ToString())) {
+        if (_curMode != null) {
+            if (GUI.Button(new Rect(width-200,20,160,60), _curMode.ToString())) {
                 setupNextDetector();
                 _result = null;
             }
@@ -135,23 +133,50 @@ public class DetectionTest : MonoBehaviour
     }
 
     private void setupNextDetector() {
-        IObjectDetector prev = _detector;
         _detector?.Dispose();
         _detector = null;
 
-        if (prev == null || prev is DummyDetector) {
-            if (serverUrl != null) {
+        string mode = _curMode;
+        switch (mode) {
+        case "dummy":
+            mode = "local";
+            break;
+        case "local":
+            mode = "coco";
+            break;
+        case "coco":
+            mode = "rsu";
+            break;
+        default:
+            mode = "dummy";
+            break;
+        }
+        _curMode = mode;
+
+        switch (mode) {
+        case "local":
+            if (yoloModel != null) {
+                _detector = new LocalYOLODetector(yoloModel, YOLODetector.COCO_LABELS);
+            }
+            break;
+        case "coco":
+            if (serverUrlCOCO != null) {
                 try {
-                    _detector = new RemoteYOLODetector(serverUrl, YOLODetector.COCO_LABELS);
+                    _detector = new RemoteYOLODetector(serverUrlCOCO, YOLODetector.COCO_LABELS);
                 } catch (Exception e) {
                     Debug.LogWarning("connection error: "+e);
                 }
             }
-        }
-        if (_detector == null && !(prev is LocalYOLODetector)) {
-            if (yoloModel != null) {
-                _detector = new LocalYOLODetector(yoloModel, YOLODetector.COCO_LABELS);
+            break;
+        case "rsu":
+            if (serverUrlRSU != null) {
+                try {
+                    _detector = new RemoteYOLODetector(serverUrlRSU, YOLODetector.RSU_LABELS);
+                } catch (Exception e) {
+                    Debug.LogWarning("connection error: "+e);
+                }
             }
+            break;
         }
         if (_detector == null) {
             _detector = new DummyDetector();
