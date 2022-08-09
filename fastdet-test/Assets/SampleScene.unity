@@ -556,7 +556,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   rawImage: {fileID: 218734108}
-  serverUrl: rtsp://192.168.1.100:10000/detect
+  serverUrl: rtsp://192.168.1.10:10000/full
   yoloModel: {fileID: 5022602860645237092, guid: 46dd82772bf0224408c2b5bfeffa2ee3, type: 3}
   textStyle:
     m_Name: text

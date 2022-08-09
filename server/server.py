@@ -258,9 +258,9 @@ class DetectService(UDPService):
 ##
 class RTSPService(TCPService):
 
-    def __init__(self, sock, detector):
+    def __init__(self, sock, detectors):
         super().__init__(sock)
-        self.detector = detector
+        self.detectors = detectors
         self.service = None
         return
 
@@ -292,7 +292,8 @@ class RTSPService(TCPService):
         try:
             rtp_port = int(flds[0])
             path = flds[1].decode('utf-8')
-        except (UnicodeError, ValueError):
+            detector = self.detectors[path]
+        except (UnicodeError, ValueError, KeyError):
             self.sock.send(b'!INVALID\r\n')
             self.logger.error(f'startfeed: invalid args: args={args!r}')
             return
@@ -304,11 +305,11 @@ class RTSPService(TCPService):
         sock_rtp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock_rtp.bind(('', 0))
         (_, port) = sock_rtp.getsockname()
-        self.logger.info(f'startfeed: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}')
+        self.logger.info(f'startfeed: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}, detector={detector}')
         text = f'+OK {port} {session_id.hex()}'
         self.sock.send(text.encode('ascii')+b'\r\n')
         self.service = DetectService(
-            sock_rtp, self.detector, rtp_host, rtp_port, session_id)
+            sock_rtp, detector, rtp_host, rtp_port, session_id)
         self.service.init()
         self.loop.add(self.service)
         return
@@ -317,22 +318,22 @@ class RTSPService(TCPService):
 ##
 class RTSPServer(TCPServer):
 
-    def __init__(self, port, detector):
+    def __init__(self, port, detectors):
         super().__init__(port)
-        self.detector = detector
+        self.detectors = detectors
         return
 
     def get_service(self, conn):
-        return RTSPService(conn, self.detector)
+        return RTSPService(conn, self.detectors)
 
 # main
 def main(argv):
     import getopt
     def usage():
-        print(f'usage: {argv[0]} [-d] [-o dbgout] [-m mode] [-s port] [-t interval] [-c num_classes] [onnx]')
+        print(f'usage: {argv[0]} [-d] [-o dbgout] [-m mode] [-s port] [-t interval] [name:num_classes:onnx]')
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'do:m:s:t:c:')
+        (opts, args) = getopt.getopt(argv[1:], 'do:m:s:t:')
     except getopt.GetoptError:
         return usage()
     level = logging.INFO
@@ -340,23 +341,26 @@ def main(argv):
     server_port = 10000
     interval = 0.1
     dbgout = None
-    num_classes = 80
     for (k, v) in opts:
         if k == '-d': level = logging.DEBUG
         elif k == '-o': dbgout = v
         elif k == '-m': mode = v
         elif k == '-s': server_port = int(v)
         elif k == '-t': interval = float(v)
-        elif k == '-c': num_classes = int(v)
     logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=level)
 
     # Server mode.
+    detectors = {}
     if args:
-        detector = ONNXDetector(args[0], mode=mode, num_classes=num_classes, dbgout=dbgout)
+        for arg in args:
+            (name,num_classes,path) = arg.split(':')
+            detector = ONNXDetector(path, mode=mode, num_classes=int(num_classes), dbgout=dbgout)
+            detectors[name] = detector
     else:
-        detector = DummyDetector(dbgout=dbgout)
+        detectors['detect'] = DummyDetector(dbgout=dbgout)
+    logging.info(f'detectors={detectors}')
     loop = EventLoop()
-    loop.add(RTSPServer(server_port, detector))
+    loop.add(RTSPServer(server_port, detectors))
     loop.run(interval)
     return 0
 
