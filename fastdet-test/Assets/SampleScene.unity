@@ -416,10 +416,10 @@ MonoBehaviour:
       m_ScaledBackgrounds: []
       m_TextColor: {r: 0, g: 0, b: 0, a: 1}
     m_Border:
-      m_Left: 0
-      m_Right: 0
-      m_Top: 0
-      m_Bottom: 0
+      m_Left: 1
+      m_Right: 1
+      m_Top: 1
+      m_Bottom: 1
     m_Margin:
       m_Left: 0
       m_Right: 0
@@ -440,17 +440,14 @@ MonoBehaviour:
     m_FontStyle: 0
     m_Alignment: 4
     m_WordWrap: 0
-    m_RichText: 1
-    m_TextClipping: 1
+    m_RichText: 0
+    m_TextClipping: 0
     m_ImagePosition: 0
     m_ContentOffset: {x: 0, y: 0}
     m_FixedWidth: 0
     m_FixedHeight: 0
     m_StretchWidth: 1
     m_StretchHeight: 0
-  camera: {fileID: 0}
-  origin: {fileID: 0}
-  objPrefab: {fileID: 5703174348613806311, guid: e0fc23ee804898a4cb437d597397c7df, type: 3}
-  cameraManager: {fileID: 0}
   DetectionInterval: 0.1
   DetectionThreshold: 0.3
+  BoxRetain: 0.5
