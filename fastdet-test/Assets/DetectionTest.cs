@@ -69,6 +69,12 @@ public class DetectionTest : MonoBehaviour
             GUI.Label(new Rect(10,10,300,20), text, textStyle);
         }
         if (_boxes != null) {
+            float t = Time.time;
+            for (int i = _boxes.Count; 0 < i; --i) {
+                if (_boxes[i-1].lifetime < t) {
+                    _boxes.RemoveAt(i-1);
+                }
+            }
             foreach (ObjBox box in _boxes) {
                 Rect rect = new Rect(
                     box.rect.x*width,
@@ -106,15 +112,6 @@ public class DetectionTest : MonoBehaviour
                 }
             }
             _detector.Update();
-        }
-
-        if (_boxes != null) {
-            float t = Time.time;
-            for (int i = _boxes.Count; 0 < i; --i) {
-                if (_boxes[i-1].lifetime < t) {
-                    _boxes.RemoveAt(i-1);
-                }
-            }
         }
     }
 
@@ -177,18 +174,22 @@ public class DetectionTest : MonoBehaviour
             _result = result;
             float lifetime = Time.time + BoxRetain;
             foreach (YLObject obj1 in _result.Objects) {
-                bool ok = true;
-                foreach (ObjBox box1 in _boxes) {
-                    if (0.5 < getIOU(box1.rect, obj1.BBox)) {
-                        ok = false;
+                int found = -1;
+                for (int i = 0; i < _boxes.Count; i++) {
+                    ObjBox box0 = _boxes[i];
+                    if (box0.label == obj1.Label &&
+                        0.5 < getIOU(box0.rect, obj1.BBox)) {
+                        found = i;
                         break;
                     }
                 }
-                if (ok) {
-                    ObjBox box = new ObjBox();
-                    box.rect = obj1.BBox;
-                    box.label = obj1.Label;
-                    box.lifetime = lifetime;
+                ObjBox box = new ObjBox();
+                box.rect = obj1.BBox;
+                box.label = obj1.Label;
+                box.lifetime = lifetime;
+                if (0 <= found) {
+                    _boxes[found] = box;
+                } else {
                     _boxes.Add(box);
                 }
             }
