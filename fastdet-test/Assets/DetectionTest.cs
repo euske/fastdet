@@ -18,14 +18,22 @@ public class DetectionTest : MonoBehaviour
 
     public float DetectionInterval = 0.1f;
     public float DetectionThreshold = 0.05f;
+    public float BoxRetain = 0.5f;
 
     private WebCamTexture _webcam = null;
     private IObjectDetector _detector = null;
     private float _nextDetection = 0;
     private YLResult _result = null;
+    private List<ObjBox> _boxes = new List<ObjBox>();
 
     private string _curMode = null;
     private string[] MODES = { "dummy", "local", "coco", "rsu" };
+
+    private struct ObjBox {
+        public Rect rect;
+        public string label;
+        public float lifetime;
+    };
 
     void Start()
     {
@@ -59,13 +67,15 @@ public class DetectionTest : MonoBehaviour
             int infer = (int)(_result.InferenceTime*1000);
             string text = "Total: "+total+"ms, Inference: "+infer+"ms";
             GUI.Label(new Rect(10,10,300,20), text, textStyle);
-            foreach (YLObject obj1 in _result.Objects) {
+        }
+        if (_boxes != null) {
+            foreach (ObjBox box in _boxes) {
                 Rect rect = new Rect(
-                    obj1.BBox.x*width,
-                    obj1.BBox.y*height,
-                    obj1.BBox.width*width,
-                    obj1.BBox.height*height);
-                GUI.Box(rect, obj1.Label, boxStyle);
+                    box.rect.x*width,
+                    box.rect.y*height,
+                    box.rect.width*width,
+                    box.rect.height*height);
+                GUI.Box(rect, box.label, boxStyle);
             }
         }
         if (_curMode != null) {
@@ -96,6 +106,15 @@ public class DetectionTest : MonoBehaviour
                 }
             }
             _detector.Update();
+        }
+
+        if (_boxes != null) {
+            float t = Time.time;
+            for (int i = _boxes.Count; 0 < i; --i) {
+                if (_boxes[i-1].lifetime < t) {
+                    _boxes.RemoveAt(i-1);
+                }
+            }
         }
     }
 
@@ -156,6 +175,31 @@ public class DetectionTest : MonoBehaviour
         YLResult result = e.Result;
         if (_result == null || _result.SentTime < result.SentTime) {
             _result = result;
+            float lifetime = Time.time + BoxRetain;
+            foreach (YLObject obj1 in _result.Objects) {
+                bool ok = true;
+                foreach (ObjBox box1 in _boxes) {
+                    if (0.5 < getIOU(box1.rect, obj1.BBox)) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    ObjBox box = new ObjBox();
+                    box.rect = obj1.BBox;
+                    box.label = obj1.Label;
+                    box.lifetime = lifetime;
+                    _boxes.Add(box);
+                }
+            }
         }
+    }
+
+    private float getIOU(Rect bbox0, Rect bbox1) {
+        float x = Mathf.Max(bbox0.x, bbox1.x);
+        float y = Mathf.Max(bbox0.y, bbox1.y);
+        float w = Mathf.Min(bbox0.x+bbox0.width, bbox1.x+bbox1.width) - x;
+        float h = Mathf.Min(bbox0.y+bbox0.height, bbox1.y+bbox1.height) - y;
+        return (w*h)/(bbox0.width*bbox0.height);
     }
 }
