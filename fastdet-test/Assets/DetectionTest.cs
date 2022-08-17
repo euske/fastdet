@@ -15,9 +15,11 @@ public class DetectionTest : MonoBehaviour
     public NNModel yoloModel = null;
     public GUIStyle textStyle = new GUIStyle();
     public GUIStyle boxStyle = new GUIStyle();
+    public GUIStyle labelStyle = new GUIStyle();
 
     public float DetectionInterval = 0.1f;
-    public float DetectionThreshold = 0.05f;
+    public float DetectionThreshold = 0.1f;
+    public float DetectionThresholdRSU = 0.1f;
     public float BoxRetain = 0.5f;
 
     private WebCamTexture _webcam = null;
@@ -81,7 +83,8 @@ public class DetectionTest : MonoBehaviour
                     box.rect.y*height,
                     box.rect.width*width,
                     box.rect.height*height);
-                GUI.Box(rect, box.label, boxStyle);
+                GUI.Box(rect, "", boxStyle);
+                GUI.Label(new Rect(rect.x, rect.y, 0, 0), box.label, labelStyle);
             }
         }
         if (_curMode != null) {
@@ -106,7 +109,10 @@ public class DetectionTest : MonoBehaviour
                         float ratio = (float)input.height/input.width;
                         area = new Rect((1-ratio)/2, 0, ratio, 1);
                     }
-                    _detector.ProcessImage(input, area, DetectionThreshold);
+                    float threshold = ((_curMode == "rsu")?
+                                       DetectionThresholdRSU :
+                                       DetectionThreshold);
+                    _detector.ProcessImage(input, area, threshold);
                     _nextDetection = Time.time + DetectionInterval;
                     Debug.Log("nextDetection:"+_nextDetection);
                 }
