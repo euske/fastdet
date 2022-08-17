@@ -305,7 +305,7 @@ class RTSPService(TCPService):
         sock_rtp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock_rtp.bind(('', 0))
         (_, port) = sock_rtp.getsockname()
-        self.logger.info(f'startfeed: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}, detector={detector}')
+        self.logger.info(f'startfeed: port={port}, rtp_host={rtp_host}, rtp_port={rtp_port}, session_id={session_id.hex()}, path={path}, detector={detector}')
         text = f'+OK {port} {session_id.hex()}'
         self.sock.send(text.encode('ascii')+b'\r\n')
         self.service = DetectService(

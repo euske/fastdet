@@ -77,6 +77,9 @@ class Detector:
 
 class DummyDetector(Detector):
 
+    def __repr__(self):
+        return (f'<DummyDetector>')
+
     def perform(self, data, threshold=0.1):
         super().perform(data)
         (width, height) = self.image_size
@@ -110,10 +113,15 @@ class ONNXDetector(Detector):
             providers.insert(0, 'CUDAExecutionProvider')
         elif mode == 'tensorrt':
             providers.insert(0, 'TensorrtExecutionProvider')
+        self.mode = mode
+        self.path = path
         self.model = ort.InferenceSession(path, providers=providers)
         self.logger = logging.getLogger()
         self.logger.info(f'load: path={path}, providers={providers}')
         return
+
+    def __repr__(self):
+        return (f'<ONNXDetector mode={self.mode}, path={self.path}, num_classes={self.num_classes}>')
 
     def perform(self, data, threshold=0.1):
         super().perform(data)
