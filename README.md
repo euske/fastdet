@@ -17,6 +17,19 @@ Fast object detector with distributed neural network.
 
     $ pip install -r requirements.txt
 
+## Building Client (Unity)
+
+ 1. Launch Unity Hub and open a project.
+ 2. Select the "fastdet-test" folder.
+ 3. "File" → "Open Scene" and select the "SampleScene.unity".
+ 4. Open "Project" → "Assets" tab and make sure the "Yolov3-tiny" model is visible.
+ 5. Select "SampleScene" → "Canvas" and make sure the Yolo Model is associated with yolov3-tiny.
+    (if missing, click it and connect to the yolov3-tiny.onnx)
+ 6. Connect the PC to a camera, press the Play button at the top.
+ 7. "File" → "Build Settings" and select "Android". Press "Switch Platform".
+ 8. Press "Build & Run".
+
+
 ## Testing
 
 ### Test detector only
@@ -43,6 +56,7 @@ Fast object detector with distributed neural network.
     > cd \Program Files\Unity\Hub\Editor\*\Editor\Data\PlaybackEngines\AndroidPlayer\SDK\platform-tools
     > adb logcat -c
     > adb logcat -s Unity
+
 
 ## Running
 
