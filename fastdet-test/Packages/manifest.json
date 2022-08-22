@@ -2,8 +2,6 @@
   "dependencies": {
     "com.unity.barracuda": "2.0.0",
     "com.unity.ugui": "1.0.0",
-    "com.unity.xr.arcore": "4.2.3",
-    "com.unity.xr.arfoundation": "4.2.3",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.imgui": "1.0.0",
