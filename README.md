@@ -21,21 +21,22 @@ Fast object detector with distributed neural network.
 
 ### Test detector only
 
-    $ python server/detector.py models/yolov3-full.onnx testdata/dog.jpg
+    $ python server/detector.py -c 80 models/yolov3-full.onnx testdata/dog.jpg
+    $ python server/detector.py -c 9 models/yolov3-rsu.onnx testdata/rsu1.jpg
 
 ### Test server with dummy detector
 
     $ python server/server.py -s 10000
-    $ python server/client.py -c localhost:10000 testdata/dog.jpg
+    $ python server/client.py rtsp://localhost:10000/detect testdata/dog.jpg
 
 ### Test server with full detector
 
-    $ python server/server.py -s 10000 models/yolov3-full.onnx
-    $ python server/client.py -c localhost:10000 testdata/dog.jpg
+    $ python server/server.py -s 10000 full:80:models/yolov3-full.onnx
+    $ python server/client.py rtsp://localhost:10000/full testdata/dog.jpg
 
 ### Test server w/ CUDA
 
-    $ python server/server.py -s 10000 -m cuda models/yolov3-full.onnx
+    $ python server/server.py -s 10000 -m cuda full:80:models/yolov3-full.onnx
 
 ### Debugging on Android
 

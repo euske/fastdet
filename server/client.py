@@ -133,30 +133,34 @@ class RTSPClient:
 def main(argv):
     import getopt
     def usage():
-        print(f'usage: {argv[0]} [-d] [-t interval] [-c host[:port]] [file ...]')
+        print(f'usage: {argv[0]} [-d] [-t interval] rtsp://host[:port]/path [file ...]')
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'dt:p:')
+        (opts, args) = getopt.getopt(argv[1:], 'dt:')
     except getopt.GetoptError:
         return usage()
     level = logging.INFO
     interval = 0.1
     client_host = 'localhost'
     client_port = 10000
-    threshold = 0.3
+    threshold = 0.1
     for (k, v) in opts:
         if k == '-d': level = logging.DEBUG
         elif k == '-t': interval = float(v)
-        elif k == '-c':
-            (host,_,port) = v.partition(':')
-            if host:
-                client_host = host
-            if port:
-                client_port = int(port)
     logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=level)
 
+    if not args: return usage()
+    url = args.pop(0)
+    if not url.startswith('rtsp://'): return usage()
+    (hostport,_,remotepath) = url[7:].partition('/')
+    (host,_,port) = hostport.partition(':')
+    if host:
+        client_host = host
+    if port:
+        client_port = int(port)
+
     logging.info(f'connecting: {client_host}:{client_port}...')
-    client = RTSPClient(client_host, client_port)
+    client = RTSPClient(client_host, client_port, remotepath)
     client.open()
     files = []
     for path in args:
