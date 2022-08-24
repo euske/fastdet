@@ -114,7 +114,7 @@ public class DetectionTest : MonoBehaviour
                                        DetectionThreshold);
                     _detector.ProcessImage(input, area, threshold);
                     _nextDetection = Time.time + DetectionInterval;
-                    Debug.Log("nextDetection:"+_nextDetection);
+                    //Debug.Log("nextDetection:"+_nextDetection);
                 }
             }
             _detector.Update();

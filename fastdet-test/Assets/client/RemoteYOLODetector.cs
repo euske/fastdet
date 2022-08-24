@@ -49,7 +49,16 @@ public class RemoteYOLODetector : YOLODetector {
         logit("Open: host={0}, port={1}, path={2}", host, port, path);
 
         // Connect the host.
-        IPAddress addr = Dns.GetHostEntry(host).AddressList[0];
+        IPAddress addr = null;
+        foreach (IPAddress a in Dns.GetHostEntry(host).AddressList) {
+            if (a.AddressFamily == AddressFamily.InterNetwork) {
+                addr = a;
+                break;
+            }
+        }
+        if (addr == null) {
+            throw new ArgumentException("invalid host: host="+host);
+        }
         IPEndPoint ep = new IPEndPoint(addr, port);
         _tcp = new TcpClient();
         _tcp.Connect(ep);
