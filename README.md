@@ -27,7 +27,8 @@ Fast object detector with distributed neural network.
     (if missing, click it and connect to the yolov3-tiny.onnx)
  6. Connect the PC to a camera, press the Play button at the top.
  7. "File" → "Build Settings" and select "Android". Press "Switch Platform".
- 8. Press "Build & Run".
+ 8. Enable the "Developer Mode" and "USB Debugging" on an Android phone.
+ 9. Press "Build & Run".
 
 
 ## Testing
