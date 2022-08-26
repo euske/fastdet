@@ -10,7 +10,7 @@ def read_const(graph, name):
             print(name)
             return
         if name in node.output:
-            for (i,oname) in range(len(node.output)):
+            for (i,oname) in enumerate(node.output):
                 if oname == name:
                     value = None
                     for v in node.attribute:
@@ -49,9 +49,9 @@ def main(argv):
         return
 
     # inspect values
-    if name.startswith('%'):
-        name = name[1:]
     for name in args:
+        if name.startswith('%'):
+            name = name[1:]
         read_const(model.graph, name)
 
     return
