@@ -67,6 +67,13 @@ Fast object detector with distributed neural network.
  4. play the scene.
 
 
+## TODOs
+
+ - IPv6 support (both client and server).
+ - Dockerize the server.
+ - Rewrite the server in a faster language (Go or C# maybe?).
+
+
 ## API
 
 Namespace: `net.sss_consortium.fastdet`
