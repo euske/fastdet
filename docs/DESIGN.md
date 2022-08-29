@@ -36,7 +36,7 @@ References:
   1. Client -> Server: sends a 12-byte 'emtpy' RTP packet.
   2. Server -> Client: sends a 12-byte 'emtpy' RTP packet.
   3. Client -> Server: sends a request.
-
+```
      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     |V=2|P|X|  CC   |M|     PT      |       sequence number         |
@@ -51,9 +51,10 @@ References:
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     |                    MJPEG frame                                |
     |                    ...                                        |
+```
 
   4. Server -> Client: performs detection and sends a response.
-
+```
      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     |V=2|P|X|  CC   |M|     PT      |       sequence number         |
@@ -68,6 +69,7 @@ References:
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     |                    Detection result                           |
     |                    ...                                        |
+```
 
 ### Detection Result
 
