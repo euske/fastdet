@@ -1,15 +1,43 @@
 # Design Docs
 
+## Overview
+
+Fastdet is a client-server framework that performs object
+detection. The client periodically sends images to the server, and the
+server performs detection and sends the result back. The framework is
+designed to achieve a low latency for object detection in mobile
+devices with as little overhead as possible.
+
+    +------+               +------+
+    |      |----(image)--->|      |
+    |Client|               |Server|
+    |      |<---(result)---|      |
+    +------+               +------+
+
+
+## Detection
+
+Detection is done by YOLOv3 algorithm (Redmon, et al). First, each
+image is scaled and cropped to 416x416. Then it is converted to JPEG
+and sent over network by the client. Each image request has a unique
+ID so that the client can detect missing results or out-of-order
+sequences.
+
+The server decodes the request image, processes it with the neural
+network and send back the detection result. Again, the server response
+has the request ID so that the client can find the corresponding
+request for a given response.
+
 
 ## Protocols
 
-Fastdet uses a "RTSP-like" (not real RTSP) protocol for sending images.
-By "-like", I mean that the role of client and server is reversed in that
-the original RTSP is a server sending video feeds to a client whereas
-this protocol allows a client to send video feeds to a server, which
-performs object detection. (This client-to-server feed was mentioned
-in RTSP 1.0 but its specification was never materialized, and they're
-dropped in RTSP 2.0.)
+Fastdet uses a "RTSP-like" (but not real RTSP) protocol for sending
+images.  By "-like", I mean that the role of client and server is
+reversed in that the original RTSP is a server sending video feeds to
+a client whereas this protocol allows a client to send video feeds to
+a server, which performs object detection. (This client-to-server feed
+was mentioned in RTSP 1.0 but its specification was never
+materialized, and they're dropped in RTSP 2.0.)
 
 References:
 
@@ -18,7 +46,7 @@ References:
 
 ### URI
 
-  rtsp://[host][:port]/[path]
+  `rtsp://[host][:port]/[path]`
 
 ### Establishing Connection
 
@@ -33,8 +61,8 @@ References:
 
 ### Sending Images
 
-  1. Client -> Server: sends a 12-byte 'emtpy' RTP packet.
-  2. Server -> Client: sends a 12-byte 'emtpy' RTP packet.
+  1. Client -> Server: sends a 12-byte 'empty' RTP packet.
+  2. Server -> Client: sends a 12-byte 'empty' RTP packet.
   3. Client -> Server: sends a request.
 ```
      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
